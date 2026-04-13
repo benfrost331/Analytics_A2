@@ -359,37 +359,45 @@ Validation Loop Over Regularisation  Values
 
 nu_grid <- exp(seq(-7, 3, length.out = 20))
 
-val_results <- data.frame(
-  nu = nu_grid,
-  train_loss = NA_real_,
-  train_ce = NA_real_,
-  valid_ce = NA_real_,
-  train_err = NA_real_,
-  valid_err = NA_real_
-)
-
-split_fits <- vector("list", length(nu_grid))
-
-for (i in seq_along(nu_grid)) {
-  fit_i <- fit_split_network(
-    Xu_train, Xv_train, Y_train,
-    m = 4, nu = nu_grid[i],
-    maxit = 800, n_starts = 3, seed = 2026 + i
+if (file.exists("ValidationLoopResults.Rdata"))
+{
+  load("ValidationLoopResults.Rdata")
+} else 
+{
+  val_results <- data.frame(
+    nu = nu_grid,
+    train_loss = NA_real_,
+    train_ce = NA_real_,
+    valid_ce = NA_real_,
+    train_err = NA_real_,
+    valid_err = NA_real_
   )
   
-  split_fits[[i]] <- fit_i
+  split_fits <- vector("list", length(nu_grid))
   
-  tr_eval <- forward_split(fit_i$par, Xu_train, Xv_train, Y_train, m = 4, nu = nu_grid[i])
-  va_eval <- forward_split(fit_i$par, Xu_valid, Xv_valid, Y_valid, m = 4, nu = nu_grid[i])
+  for (i in seq_along(nu_grid)) {
+    fit_i <- fit_split_network(
+      Xu_train, Xv_train, Y_train,
+      m = 4, nu = nu_grid[i],
+      maxit = 800, n_starts = 3, seed = 2026 + i
+    )
+    
+    split_fits[[i]] <- fit_i
+    
+    tr_eval <- forward_split(fit_i$par, Xu_train, Xv_train, Y_train, m = 4, nu = nu_grid[i])
+    va_eval <- forward_split(fit_i$par, Xu_valid, Xv_valid, Y_valid, m = 4, nu = nu_grid[i])
+    
+    tr_pred <- predict_split_class(fit_i$par, Xu_train, Xv_train, m = 4)
+    va_pred <- predict_split_class(fit_i$par, Xu_valid, Xv_valid, m = 4)
+    
+    val_results$train_loss[i] <- tr_eval$loss
+    val_results$train_ce[i]   <- tr_eval$ce
+    val_results$valid_ce[i]   <- va_eval$ce
+    val_results$train_err[i]  <- misclass_rate(tr_pred, Y_train)
+    val_results$valid_err[i]  <- misclass_rate(va_pred, Y_valid)
+  }
   
-  tr_pred <- predict_split_class(fit_i$par, Xu_train, Xv_train, m = 4)
-  va_pred <- predict_split_class(fit_i$par, Xu_valid, Xv_valid, m = 4)
-  
-  val_results$train_loss[i] <- tr_eval$loss
-  val_results$train_ce[i]   <- tr_eval$ce
-  val_results$valid_ce[i]   <- va_eval$ce
-  val_results$train_err[i]  <- misclass_rate(tr_pred, Y_train)
-  val_results$valid_err[i]  <- misclass_rate(va_pred, Y_valid)
+  save(val_results, file = "ValidationLoopResults.Rdata")
 }
 
 val_results
@@ -641,28 +649,36 @@ Compare Split-Brain and Standard Networks
 X_train <- X_full[, train_id, drop = FALSE]
 X_valid <- X_full[, valid_id, drop = FALSE]
 
-# use same best_nu for a fair first comparison
-fit_standard_bestnu <- fit_standard_network(
-  X_train, Y_train,
-  m1 = 8, m2 = 2, nu = best_nu,
-  maxit = 800, n_starts = 3, seed = 999
-)
-
-split_valid_ce <- forward_split(best_fit_split$par, Xu_valid, Xv_valid, Y_valid, m = 4, nu = best_nu)$ce
-std_valid_ce   <- forward_standard(fit_standard_bestnu$par, X_valid, Y_valid, m1 = 8, m2 = 2, nu = best_nu)$ce
-
-split_valid_err <- misclass_rate(
-  predict_split_class(best_fit_split$par, Xu_valid, Xv_valid, m = 4),
-  Y_valid
-)
-
-std_valid_err <- misclass_rate(
-  predict_standard_class(fit_standard_bestnu$par, X_valid, m1 = 8, m2 = 2),
-  Y_valid
-)
+if (file.exists("NetworkComparisonObjects.RData"))
+{
+  load("NetworkComparisonObjects.RData")
+} else 
+{
+  # use same best_nu for a fair first comparison
+  fit_standard_bestnu <- fit_standard_network(
+    X_train, Y_train,
+    m1 = 8, m2 = 2, nu = best_nu,
+    maxit = 800, n_starts = 3, seed = 999
+  )
+  
+  split_valid_ce <- forward_split(best_fit_split$par, Xu_valid, Xv_valid, Y_valid, m = 4, nu = best_nu)$ce
+  std_valid_ce   <- forward_standard(fit_standard_bestnu$par, X_valid, Y_valid, m1 = 8, m2 = 2, nu = best_nu)$ce
+  
+  split_valid_err <- misclass_rate(
+    predict_split_class(best_fit_split$par, Xu_valid, Xv_valid, m = 4),
+    Y_valid
+  )
+  
+  std_valid_err <- misclass_rate(
+    predict_standard_class(fit_standard_bestnu$par, X_valid, m1 = 8, m2 = 2),
+    Y_valid
+  )
+  
+  save(fit_standard_bestnu, split_valid_ce, std_valid_ce, split_valid_err, std_valid_err, file = "NetworkComparisonObjects.RData")
+}
 
 comparison_tbl <- data.frame(
-  Model = c("Split-brain", "Standard dense"),
+  Model = c("Split-Brain", "Standard Dense"),
   Validation_CE = c(split_valid_ce, std_valid_ce),
   Validation_Misclassification = c(split_valid_err, std_valid_err)
 )
