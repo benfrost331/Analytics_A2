@@ -110,19 +110,16 @@ The exploratory analysis suggests that the relationship between the predictors a
 
 ## c)
 
-```{r label = SoftmaxFunction}
-#| echo: TRUE
-
+```{r label = SoftmaxFunction, echo = TRUE}
+# Definition of Softmax Activation Function for Input Matrix Z:
 softmax_mat <- function(Z) {
+  # Calculation of Shifted Matrix by Max Column-Wise Value for Numerical Stability:
   Z_shift <- sweep(Z, 2, apply(Z, 2, max), FUN = "-")
+  # Element-Wise Exponentiation of Shifted Matrix:
   exp_Z <- exp(Z_shift)
+  # Normalisation of Each Column Returning Class Probabilities:
   exp_Z / matrix(colSums(exp_Z), nrow = nrow(Z), ncol = ncol(Z), byrow = TRUE)
 }
-
-# small check
-Z_test <- matrix(c(1, 3, 2, 4, 0, -1), nrow = 2)
-softmax_mat(Z_test)
-colSums(softmax_mat(Z_test))
 ```
 
 ## d)
