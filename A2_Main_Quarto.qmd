@@ -1,0 +1,673 @@
+---
+title: "A2_Main_Quarto"
+format: html
+editor: visual
+---
+
+## Project Set Up:
+
+```{r label = SetUp}
+#| echo: TRUE
+#| warning: FALSE
+#| message: FALSE
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+
+theme_set(theme_minimal(base_size = 12))
+set.seed(2026)
+```
+
+```{r label = LoadData}
+#| echo: TRUE
+
+dat <- read.table("HittingTheWall_2026.txt", header = TRUE)
+
+dat$Bombed <- as.logical(dat$Bombed)
+
+# for plots only
+dat$Sex_plot <- factor(dat$Sex, levels = c(0, 1), labels = c("Female", "Male"))
+
+str(dat)
+summary(dat)
+head(dat)
+```
+
+## a)
+
+### Exploratory Data Analysis:
+
+```{r label = EDAPlots}
+#| echo: TRUE
+
+p1 <- ggplot(dat, aes(x = AveSpeed, y = as.numeric(Bombed))) +
+  geom_jitter(height = 0.05, width = 0, alpha = 0.5) +
+  geom_smooth(method = "loess", se = FALSE) +
+  scale_y_continuous(
+    breaks = c(0, 1),
+    labels = c("FALSE", "TRUE")
+  ) +
+  labs(y = "Bombed",
+       title = "Bombing tendency against average first-half speed.")
+
+p2 <- ggplot(dat, aes(x = Fluid, y = as.numeric(Bombed))) +
+  geom_jitter(height = 0.05, width = 0, alpha = 0.5) +
+  geom_smooth(method = "loess", se = FALSE) +
+  scale_y_continuous(
+    breaks = c(0, 1),
+    labels = c("FALSE", "TRUE")
+  ) +
+  labs(y = "Bombed",
+       title = "Bombing tendency against fluid intake.")
+
+p3 <- ggplot(dat, aes(x = Carbs, y = as.numeric(Bombed))) +
+  geom_jitter(height = 0.05, width = 0, alpha = 0.5) +
+  geom_smooth(method = "loess", se = FALSE) +
+  scale_y_continuous(
+    breaks = c(0, 1),
+    labels = c("FALSE", "TRUE")
+  ) +
+  labs(
+    y = "Bombed",
+    title = "Bombing tendency against carbohydrate intake."
+  )
+
+p4 <- ggplot(dat, aes(x = Sex_plot, y = as.numeric(Bombed))) +
+  geom_jitter(height = 0.05, width = 0.1, alpha = 0.4) +
+  stat_summary(fun = mean, geom = "point", size = 3) +
+  scale_y_continuous(
+    breaks = c(0, 1),
+    labels = c("FALSE", "TRUE")
+  ) +
+  labs(y = "Bombed",
+       x = "Sex",
+       title = "Bombing tendency by sex.")
+
+p1
+p2 
+p3
+p4
+
+```
+
+```{r label = ColourPlots}
+#| echo: TRUE
+#| fig-width: 7
+#| fig-height: 7
+
+ggplot(dat, aes(x = Fluid, y = Carbs, colour = Bombed)) +
+  geom_point(alpha = 0.7) +
+  facet_grid(Sex_plot ~ cut(AveSpeed, breaks = 4)) +
+  labs(title = "Fluid and carbohydrate intake by bombing status across sex and speed bands.")
+```
+
+The exploratory analysis suggests that the relationship between the predictors and the probability of bombing is not purely linear. In particular, the response appears to vary nonlinearly across both Fluid and Carbs, and there may also be interaction-type behaviour between nutritional variables and demographic/performance variables. This provides preliminary motivation for considering a nonlinear classifier such as a neural network. After running the plots, comment specifically on whether the smoothed trends appear curved, whether there are threshold-like regions, and whether separation appears stronger in some predictor combinations than in others.
+
+## b)
+
+## c)
+
+```{r label = SoftmaxFunction}
+#| echo: TRUE
+
+softmax_mat <- function(Z) {
+  Z_shift <- sweep(Z, 2, apply(Z, 2, max), FUN = "-")
+  exp_Z <- exp(Z_shift)
+  exp_Z / matrix(colSums(exp_Z), nrow = nrow(Z), ncol = ncol(Z), byrow = TRUE)
+}
+
+# small check
+Z_test <- matrix(c(1, 3, 2, 4, 0, -1), nrow = 2)
+softmax_mat(Z_test)
+colSums(softmax_mat(Z_test))
+```
+
+## d)
+
+## e)
+
+### Create Input and Output Matrices:
+
+```{r label = MatricesCreation}
+#| echo: TRUE
+
+dat$Bombed <- as.logical(dat$Bombed)
+
+# keep a numeric version for modelling
+dat$Sex_num <- ifelse(dat$Sex == "Male" | dat$Sex == 1, 1, 0)
+
+# Xu: demographic/performance inputs
+Xu <- t(as.matrix(dat[, c("AveSpeed", "Sex_num")]))
+storage.mode(Xu) <- "double"
+
+# Xv: nutrition inputs
+Xv <- t(as.matrix(dat[, c("Fluid", "Carbs")]))
+storage.mode(Xv) <- "double"
+
+# two-output response matrix
+Y <- rbind(
+  Bombed_FALSE = as.numeric(!dat$Bombed),
+  Bombed_TRUE  = as.numeric(dat$Bombed)
+)
+
+dim(Xu)
+dim(Xv)
+dim(Y)
+
+sum(!is.finite(Xu))
+sum(!is.finite(Xv))
+sum(!is.finite(Y))
+```
+
+## f)
+
+## g)
+
+### Feed Forward & Objective Function
+
+```{r}
+#| label: split-brain-functions
+#| echo: TRUE
+
+softmax_mat <- function(Z) {
+  Z_shift <- sweep(Z, 2, apply(Z, 2, max), FUN = "-")
+  exp_Z <- exp(Z_shift)
+  exp_Z / matrix(colSums(exp_Z), nrow = nrow(Z), ncol = ncol(Z), byrow = TRUE)
+}
+
+tanh_prime_from_act <- function(A) {
+  1 - A^2
+}
+
+unpack_split_params <- function(theta, pu, pv, m, q) {
+  idx <- 1
+  
+  take <- function(k) {
+    out <- theta[idx:(idx + k - 1)]
+    idx <<- idx + k
+    out
+  }
+  
+  W1u <- matrix(take(m * pu), nrow = m, ncol = pu)
+  b1u <- matrix(take(m), nrow = m, ncol = 1)
+  
+  W1v <- matrix(take(m * pv), nrow = m, ncol = pv)
+  b1v <- matrix(take(m), nrow = m, ncol = 1)
+  
+  W2u <- matrix(take(m), nrow = 1, ncol = m)
+  b2u <- matrix(take(1), nrow = 1, ncol = 1)
+  
+  W2v <- matrix(take(m), nrow = 1, ncol = m)
+  b2v <- matrix(take(1), nrow = 1, ncol = 1)
+  
+  W3 <- matrix(take(q * 2), nrow = q, ncol = 2)
+  b3 <- matrix(take(q), nrow = q, ncol = 1)
+  
+  list(
+    W1u = W1u, b1u = b1u,
+    W1v = W1v, b1v = b1v,
+    W2u = W2u, b2u = b2u,
+    W2v = W2v, b2v = b2v,
+    W3 = W3, b3 = b3
+  )
+}
+
+n_params_split <- function(pu, pv, m, q) {
+  m*pu + m + m*pv + m + m + 1 + m + 1 + q*2 + q
+}
+
+init_split_params <- function(pu, pv, m, q, sd = 0.1) {
+  rnorm(n_params_split(pu, pv, m, q), mean = 0, sd = sd)
+}
+
+forward_split <- function(theta, Xu, Xv, Y = NULL, m = 4, nu = 0) {
+  pu <- nrow(Xu)
+  pv <- nrow(Xv)
+  q  <- 2
+  N  <- ncol(Xu)
+  
+  pars <- unpack_split_params(theta, pu, pv, m, q)
+  
+  oneN <- matrix(1, nrow = 1, ncol = N)
+  
+  Z1u <- pars$W1u %*% Xu + pars$b1u %*% oneN
+  A1u <- tanh(Z1u)
+  
+  Z1v <- pars$W1v %*% Xv + pars$b1v %*% oneN
+  A1v <- tanh(Z1v)
+  
+  Z2u <- pars$W2u %*% A1u + pars$b2u %*% oneN
+  A2u <- tanh(Z2u)
+  
+  Z2v <- pars$W2v %*% A1v + pars$b2v %*% oneN
+  A2v <- tanh(Z2v)
+  
+  A2 <- rbind(A2u, A2v)
+  
+  Z3 <- pars$W3 %*% A2 + pars$b3 %*% oneN
+  P  <- softmax_mat(Z3)
+  
+  out <- list(
+    P = P,
+    Z1u = Z1u, A1u = A1u,
+    Z1v = Z1v, A1v = A1v,
+    Z2u = Z2u, A2u = A2u,
+    Z2v = Z2v, A2v = A2v,
+    Z3 = Z3
+  )
+  
+  if (!is.null(Y)) {
+    eps <- 1e-12
+    ce <- -mean(colSums(Y * log(P + eps)))
+    
+    reg <- (nu / 2) * (
+      sum(pars$W1u^2) + sum(pars$W1v^2) +
+      sum(pars$W2u^2) + sum(pars$W2v^2) +
+      sum(pars$W3^2)
+    )
+    
+    out$loss <- ce + reg
+    out$ce   <- ce
+    out$reg  <- reg
+  }
+  
+  out
+}
+
+predict_split_class <- function(theta, Xu, Xv, m = 4) {
+  P <- forward_split(theta, Xu, Xv, m = m)$P
+  max.col(t(P)) - 1
+}
+
+misclass_rate <- function(pred_class, Y) {
+  truth <- max.col(t(Y)) - 1
+  mean(pred_class != truth)
+}
+```
+
+Fitting Wrapper (OPTIONAL):
+
+```{r label FitSpliWrapper}
+#| echo: TRUE
+
+fit_split_network <- function(Xu_train, Xv_train, Y_train, m = 4, nu = 0,
+                              maxit = 1000, n_starts = 3, seed = 2026) {
+  set.seed(seed)
+  
+  pu <- nrow(Xu_train)
+  pv <- nrow(Xv_train)
+  q  <- nrow(Y_train)
+  
+  best_fit <- NULL
+  best_val <- Inf
+  
+  for (s in 1:n_starts) {
+    theta0 <- init_split_params(pu, pv, m, q, sd = 0.1)
+    
+    fit <- optim(
+      par = theta0,
+      fn = function(th) forward_split(th, Xu_train, Xv_train, Y_train, m = m, nu = nu)$loss,
+      method = "BFGS",
+      control = list(maxit = maxit, reltol = 1e-8)
+    )
+    
+    if (fit$value < best_val) {
+      best_val <- fit$value
+      best_fit <- fit
+    }
+  }
+  
+  best_fit
+}
+```
+
+The forward pass was implemented explicitly for the split-brain architecture described in the assignment. Hyperbolic tangent activation functions were used on all hidden nodes, while the output layer used a two-class softmax activation. Since the response is binary and the network outputs class probabilities, the natural objective function is the multinomial cross-entropy loss. To control model complexity, an L2  penalty was added on the weight matrices, with regularisation level denoted by v. Bias terms were left unpenalised.
+
+## h)
+
+### Validation Analysis for m = 4:
+
+Train-Validation Split
+
+```{r}
+#| label: split-data
+#| echo: TRUE
+
+set.seed(2026)
+n <- nrow(dat)
+train_id <- sample(seq_len(n), size = floor(0.8 * n))
+valid_id <- setdiff(seq_len(n), train_id)
+
+Xu_train <- Xu[, train_id, drop = FALSE]
+Xv_train <- Xv[, train_id, drop = FALSE]
+Y_train  <- Y[, train_id, drop = FALSE]
+
+Xu_valid <- Xu[, valid_id, drop = FALSE]
+Xv_valid <- Xv[, valid_id, drop = FALSE]
+Y_valid  <- Y[, valid_id, drop = FALSE]
+
+length(train_id)
+length(valid_id)
+```
+
+Validation Loop Over Regularisation  Values
+
+```{r label = ValidationGrid}
+#| echo: TRUE
+
+nu_grid <- exp(seq(-7, 3, length.out = 20))
+
+val_results <- data.frame(
+  nu = nu_grid,
+  train_loss = NA_real_,
+  train_ce = NA_real_,
+  valid_ce = NA_real_,
+  train_err = NA_real_,
+  valid_err = NA_real_
+)
+
+split_fits <- vector("list", length(nu_grid))
+
+for (i in seq_along(nu_grid)) {
+  fit_i <- fit_split_network(
+    Xu_train, Xv_train, Y_train,
+    m = 4, nu = nu_grid[i],
+    maxit = 800, n_starts = 3, seed = 2026 + i
+  )
+  
+  split_fits[[i]] <- fit_i
+  
+  tr_eval <- forward_split(fit_i$par, Xu_train, Xv_train, Y_train, m = 4, nu = nu_grid[i])
+  va_eval <- forward_split(fit_i$par, Xu_valid, Xv_valid, Y_valid, m = 4, nu = nu_grid[i])
+  
+  tr_pred <- predict_split_class(fit_i$par, Xu_train, Xv_train, m = 4)
+  va_pred <- predict_split_class(fit_i$par, Xu_valid, Xv_valid, m = 4)
+  
+  val_results$train_loss[i] <- tr_eval$loss
+  val_results$train_ce[i]   <- tr_eval$ce
+  val_results$valid_ce[i]   <- va_eval$ce
+  val_results$train_err[i]  <- misclass_rate(tr_pred, Y_train)
+  val_results$valid_err[i]  <- misclass_rate(va_pred, Y_valid)
+}
+
+val_results
+```
+
+Validation Plot
+
+```{r label = ValidationPlot}
+#| echo: TRUE
+#| fig-width: 6
+#| fig-height: 6
+
+ggplot(val_results, aes(x = nu, y = valid_ce)) +
+  geom_line() +
+  geom_point() +
+  scale_x_log10() +
+  labs(
+    x = expression(nu),
+    y = "Validation cross-entropy",
+    title = "Validation cross-entropy against the regularisation level."
+  )
+```
+
+Select Best Regularisation Level
+
+```{r label = ChooseBestNu}
+#| echo: TRUE
+
+best_idx <- which.min(val_results$valid_ce)
+best_nu  <- val_results$nu[best_idx]
+best_fit_split <- split_fits[[best_idx]]
+
+best_nu
+val_results[best_idx, ]
+```
+
+
+The validation curve is used to select the regularisation level ν that minimises the validation cross-entropy. After running the code, report the chosen value of ν and describe the overall shape of the curve. In particular, comment on whether very small values of ν appear to overfit and whether very large values appear to oversmooth the fitted decision surface. The selected value of ν is the one corresponding to the lowest validation error on the holdout set.
+
+## i) 
+
+### Response curves over Fluid, Carbs, and Sex for a 12 km/h Runner
+
+Build Prediction Grid
+
+```{r label = ResponseGrid}
+#| echo: TRUE
+
+fluid_seq <- seq(min(dat$Fluid), max(dat$Fluid), length.out = 100)
+carb_seq  <- seq(min(dat$Carbs), max(dat$Carbs), length.out = 100)
+
+grid_pred <- expand.grid(
+  Fluid = fluid_seq,
+  Carbs = carb_seq,
+  Sex = c("Female", "Male")
+)
+
+grid_pred$AveSpeed <- 12
+grid_pred$SexNum <- ifelse(grid_pred$Sex == "Male", 1, 0)
+
+Xu_grid <- t(as.matrix(grid_pred[, c("AveSpeed", "SexNum")]))
+Xv_grid <- t(as.matrix(grid_pred[, c("Fluid", "Carbs")]))
+
+P_grid <- forward_split(best_fit_split$par, Xu_grid, Xv_grid, m = 4)$P
+grid_pred$ProbBombed <- as.numeric(P_grid[2, ])
+```
+
+Surface-Style Heatmaps
+
+```{r label = ResponseHeatmaps}
+#| echo: TRUE
+#| fig-width: 8
+#| fig-height: 4
+
+ggplot(grid_pred, aes(x = Fluid, y = Carbs, fill = ProbBombed)) +
+  geom_tile() +
+  facet_wrap(~ Sex) +
+  labs(
+    title = "Predicted probability of bombing for a runner targeting 12 km/h.",
+    fill = "Pr(Bombed)"
+  )
+```
+
+Contour Plots
+
+```{r label = ResponseContours}
+#| echo: TRUE
+#| fig-width: 8
+#| fig-height: 4
+
+ggplot(grid_pred, aes(x = Fluid, y = Carbs, z = ProbBombed)) +
+  geom_contour(bins = 10) +
+  facet_wrap(~ Sex) +
+  labs(
+    title = "Response contours for bombing probability at 12 km/h."
+  )
+```
+
+Optional Line Slices for Easier Interpretation
+
+```{r label = LineSlices}
+#| echo: TRUE
+#| fig-width: 8
+#| fig-height: 4
+
+slice_grid <- expand.grid(
+  Fluid = seq(min(dat$Fluid), max(dat$Fluid), length.out = 150),
+  Carbs = quantile(dat$Carbs, probs = c(0.25, 0.5, 0.75)),
+  Sex = c("Female", "Male")
+)
+
+slice_grid$AveSpeed <- 12
+slice_grid$SexNum <- ifelse(slice_grid$Sex == "Male", 1, 0)
+
+Xu_slice <- t(as.matrix(slice_grid[, c("AveSpeed", "SexNum")]))
+Xv_slice <- t(as.matrix(slice_grid[, c("Fluid", "Carbs")]))
+
+P_slice <- forward_split(best_fit_split$par, Xu_slice, Xv_slice, m = 4)$P
+slice_grid$ProbBombed <- as.numeric(P_slice[2, ])
+slice_grid$CarbsLevel <- factor(round(slice_grid$Carbs, 1))
+
+ggplot(slice_grid, aes(x = Fluid, y = ProbBombed, colour = CarbsLevel)) +
+  geom_line() +
+  facet_wrap(~ Sex) +
+  labs(
+    title = "Predicted bombing probability versus fluid intake at selected carbohydrate levels.",
+    y = "Pr(Bombed)",
+    colour = "Carbs"
+  )
+```
+
+## j)
+
+The response curves can be interpreted as showing how the estimated probability of bombing varies with fluid intake and carbohydrate intake for runners targeting 12 km/h over the first half of the marathon. After inspecting the fitted surfaces, identify the region in the (Fluid,Carbs)-plane where the predicted probability of bombing is lowest. This region provides model-based guidance on fuelling strategy.
+
+If the fitted contours show that bombing risk falls as carbohydrate intake increases up to a point, and similarly decreases over a moderate range of fluid intake, then the model would suggest that runners targeting this pace should avoid under-fuelling in either dimension. Also comment on whether one sex appears to have systematically higher or lower predicted bombing risk than the other, holding pace and nutrition fixed. If the two panels are similar, conclude that sex has little differential effect; if they differ meaningfully, describe how the recommended fuelling region shifts between females and males.
+
+## k)
+
+### Empirical Advantage of the Split-Brain Network:
+
+Fit a Comparable Standard Dense Network
+
+```{r label = StandardNetworkFunctions}
+#| echo: TRUE
+
+X_full <- rbind(Xu, Xv)
+
+unpack_standard_params <- function(theta, p, m1, m2, q) {
+  idx <- 1
+  
+  take <- function(k) {
+    out <- theta[idx:(idx + k - 1)]
+    idx <<- idx + k
+    out
+  }
+  
+  W1 <- matrix(take(m1 * p), nrow = m1, ncol = p)
+  b1 <- matrix(take(m1), nrow = m1, ncol = 1)
+  
+  W2 <- matrix(take(m2 * m1), nrow = m2, ncol = m1)
+  b2 <- matrix(take(m2), nrow = m2, ncol = 1)
+  
+  W3 <- matrix(take(q * m2), nrow = q, ncol = m2)
+  b3 <- matrix(take(q), nrow = q, ncol = 1)
+  
+  list(W1 = W1, b1 = b1, W2 = W2, b2 = b2, W3 = W3, b3 = b3)
+}
+
+n_params_standard <- function(p, m1, m2, q) {
+  m1*p + m1 + m2*m1 + m2 + q*m2 + q
+}
+
+init_standard_params <- function(p, m1, m2, q, sd = 0.1) {
+  rnorm(n_params_standard(p, m1, m2, q), mean = 0, sd = sd)
+}
+
+forward_standard <- function(theta, X, Y = NULL, m1 = 8, m2 = 2, nu = 0) {
+  p <- nrow(X)
+  q <- 2
+  N <- ncol(X)
+  
+  pars <- unpack_standard_params(theta, p, m1, m2, q)
+  oneN <- matrix(1, nrow = 1, ncol = N)
+  
+  Z1 <- pars$W1 %*% X + pars$b1 %*% oneN
+  A1 <- tanh(Z1)
+  
+  Z2 <- pars$W2 %*% A1 + pars$b2 %*% oneN
+  A2 <- tanh(Z2)
+  
+  Z3 <- pars$W3 %*% A2 + pars$b3 %*% oneN
+  P <- softmax_mat(Z3)
+  
+  out <- list(P = P)
+  
+  if (!is.null(Y)) {
+    eps <- 1e-12
+    ce <- -mean(colSums(Y * log(P + eps)))
+    reg <- (nu / 2) * (sum(pars$W1^2) + sum(pars$W2^2) + sum(pars$W3^2))
+    out$loss <- ce + reg
+    out$ce <- ce
+    out$reg <- reg
+  }
+  
+  out
+}
+
+fit_standard_network <- function(X_train, Y_train, m1 = 8, m2 = 2, nu = 0,
+                                 maxit = 1000, n_starts = 3, seed = 2026) {
+  set.seed(seed)
+  
+  p <- nrow(X_train)
+  q <- nrow(Y_train)
+  
+  best_fit <- NULL
+  best_val <- Inf
+  
+  for (s in 1:n_starts) {
+    theta0 <- init_standard_params(p, m1, m2, q, sd = 0.1)
+    
+    fit <- optim(
+      par = theta0,
+      fn = function(th) forward_standard(th, X_train, Y_train, m1 = m1, m2 = m2, nu = nu)$loss,
+      method = "BFGS",
+      control = list(maxit = maxit, reltol = 1e-8)
+    )
+    
+    if (fit$value < best_val) {
+      best_val <- fit$value
+      best_fit <- fit
+    }
+  }
+  
+  best_fit
+}
+
+predict_standard_class <- function(theta, X, m1 = 8, m2 = 2) {
+  P <- forward_standard(theta, X, m1 = m1, m2 = m2)$P
+  max.col(t(P)) - 1
+}
+```
+
+Compare Split-Brain and Standard Networks
+
+```{r label = CompareModels}
+#| echo: TRUE
+
+X_train <- X_full[, train_id, drop = FALSE]
+X_valid <- X_full[, valid_id, drop = FALSE]
+
+# use same best_nu for a fair first comparison
+fit_standard_bestnu <- fit_standard_network(
+  X_train, Y_train,
+  m1 = 8, m2 = 2, nu = best_nu,
+  maxit = 800, n_starts = 3, seed = 999
+)
+
+split_valid_ce <- forward_split(best_fit_split$par, Xu_valid, Xv_valid, Y_valid, m = 4, nu = best_nu)$ce
+std_valid_ce   <- forward_standard(fit_standard_bestnu$par, X_valid, Y_valid, m1 = 8, m2 = 2, nu = best_nu)$ce
+
+split_valid_err <- misclass_rate(
+  predict_split_class(best_fit_split$par, Xu_valid, Xv_valid, m = 4),
+  Y_valid
+)
+
+std_valid_err <- misclass_rate(
+  predict_standard_class(fit_standard_bestnu$par, X_valid, m1 = 8, m2 = 2),
+  Y_valid
+)
+
+comparison_tbl <- data.frame(
+  Model = c("Split-brain", "Standard dense"),
+  Validation_CE = c(split_valid_ce, std_valid_ce),
+  Validation_Misclassification = c(split_valid_err, std_valid_err)
+)
+
+comparison_tbl
+```
+
+To assess whether the split-brain network has an empirical advantage, compare its validation performance against that of a comparable standard dense network. The comparison should be based primarily on validation cross-entropy, with misclassification rate used as a secondary measure. If the split-brain network achieves lower validation error, this would suggest that the imposed architectural separation between demographic/performance variables and nutritional variables is helpful for this problem. If performance is similar, then the split-brain structure may not yield a material predictive gain, although it may still offer interpretability benefits. If the dense network performs better, then the restrictions imposed by the split-brain design may be too strong for the present dataset.
