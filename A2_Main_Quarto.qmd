@@ -229,19 +229,15 @@ forward_split <- function(theta, Xu, Xv, Y = NULL, m = 4, nu = 0) {
   # Creation of Row Vector of Ones to "Broadcast" Bias Terms Across Observations:
   oneN <- matrix(1, nrow = 1, ncol = N)
   
-  # Computation of First Hidden-Layer Linear Combinations & Activations for u-Hemisphere:
+  # Computation of First Hidden-Layer Linear Combinations & Activations for u-Hemisphere & v-Hemisphere:
   Z1u <- pars$W1u %*% Xu + pars$b1u %*% oneN
   A1u <- tanh(Z1u)
-  
-  # Computation of First Hidden-Layer Linear Combinations & Activations for v-Hemisphere:
   Z1v <- pars$W1v %*% Xv + pars$b1v %*% oneN
   A1v <- tanh(Z1v)
   
-  # Computation of Second Hidden-Layer Linear Combinations & Activation for u-Hemisphere:
+  # Computation of Second Hidden-Layer Linear Combinations & Activation for u-Hemisphere & v-Hemisphere:
   Z2u <- pars$W2u %*% A1u + pars$b2u %*% oneN
   A2u <- tanh(Z2u)
-  
-  # Computation of Second Hidden-Layer Linear Combinations & Activation for v-Hemisphere:
   Z2v <- pars$W2v %*% A1v + pars$b2v %*% oneN
   A2v <- tanh(Z2v)
   
@@ -259,8 +255,7 @@ forward_split <- function(theta, Xu, Xv, Y = NULL, m = 4, nu = 0) {
     Z1v = Z1v, A1v = A1v,
     Z2u = Z2u, A2u = A2u,
     Z2v = Z2v, A2v = A2v,
-    Z3 = Z3
-  )
+    Z3 = Z3)
   
   # Check for Response Matrix so that Objective Function can be Evaluated:
   if (!is.null(Y)) {
@@ -275,8 +270,7 @@ forward_split <- function(theta, Xu, Xv, Y = NULL, m = 4, nu = 0) {
     reg <- (nu / 2) * (
       sum(pars$W1u^2) + sum(pars$W1v^2) +
       sum(pars$W2u^2) + sum(pars$W2v^2) +
-      sum(pars$W3^2)
-    )
+      sum(pars$W3^2))
     
     # Storage of Total Objective Function & Spearate Compenents:
     out$loss <- ce + reg
@@ -345,10 +339,7 @@ The forward pass was implemented explicitly for the split-brain architecture des
 
 Train-Validation Split
 
-```{r}
-#| label: split-data
-#| echo: TRUE
-
+```{r label = SplitData, echo = True}
 set.seed(2026)
 n <- nrow(dat)
 train_id <- sample(seq_len(n), size = floor(0.8 * n))
