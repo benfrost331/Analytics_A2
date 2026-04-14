@@ -19,6 +19,7 @@ set.seed(2026)
 ```{r label = LoadData, echo = TRUE}
 dat <- read.table("HittingTheWall_2026.txt", header = TRUE)
 
+# Make Bombed a Boolean:
 dat$Bombed <- as.logical(dat$Bombed)
 
 # Make Sex a Factor For Plotting Purposes Only:
@@ -128,35 +129,25 @@ softmax_mat <- function(Z) {
 
 ### Create Input and Output Matrices:
 
-```{r label = MatricesCreation}
-#| echo: TRUE
-
+```{r label = MatricesCreation, echo = TRUE}
+# Make Bombed Variable Boolean:
 dat$Bombed <- as.logical(dat$Bombed)
 
-# keep a numeric version for modelling
+# Keep a Numeric Version for Modelling:
 dat$Sex_num <- ifelse(dat$Sex == "Male" | dat$Sex == 1, 1, 0)
 
-# Xu: demographic/performance inputs
+# Creation of Xu = Demographic/Performance Inputs:
 Xu <- t(as.matrix(dat[, c("AveSpeed", "Sex_num")]))
 storage.mode(Xu) <- "double"
 
-# Xv: nutrition inputs
+# Creation of Xv = Nutrition Inputs:
 Xv <- t(as.matrix(dat[, c("Fluid", "Carbs")]))
 storage.mode(Xv) <- "double"
 
-# two-output response matrix
+# Creation of Two-Output Response Matrix:
 Y <- rbind(
   Bombed_FALSE = as.numeric(!dat$Bombed),
-  Bombed_TRUE  = as.numeric(dat$Bombed)
-)
-
-dim(Xu)
-dim(Xv)
-dim(Y)
-
-sum(!is.finite(Xu))
-sum(!is.finite(Xv))
-sum(!is.finite(Y))
+  Bombed_TRUE  = as.numeric(dat$Bombed))
 ```
 
 ## f)
@@ -165,88 +156,103 @@ sum(!is.finite(Y))
 
 ### Feed Forward & Objective Function
 
-```{r}
-#| label: split-brain-functions
-#| echo: TRUE
-
-softmax_mat <- function(Z) {
-  Z_shift <- sweep(Z, 2, apply(Z, 2, max), FUN = "-")
-  exp_Z <- exp(Z_shift)
-  exp_Z / matrix(colSums(exp_Z), nrow = nrow(Z), ncol = ncol(Z), byrow = TRUE)
-}
-
+```{r label = SplitBrainNetworkFunctions, echo = TRUE}
+# Definition of the Derivative of tanh in Terms of the Activation:
 tanh_prime_from_act <- function(A) {
   1 - A^2
 }
 
+# Function to Unpack Parameter Vector into Split-Brain Network Weights and Biases:
 unpack_split_params <- function(theta, pu, pv, m, q) {
+
+  # Index for Position Tracking in Parameter Vector:
   idx <- 1
   
+  # Helper Function to Extract Next k Parameters from Theta:
   take <- function(k) {
     out <- theta[idx:(idx + k - 1)]
     idx <<- idx + k
     out
   }
   
+  # Extraction of First-Layer Weights and Biases for u-Hemisphere:
   W1u <- matrix(take(m * pu), nrow = m, ncol = pu)
   b1u <- matrix(take(m), nrow = m, ncol = 1)
   
+  # Extraction of First-Layer Weights and Biases for v-Hemisphere:
   W1v <- matrix(take(m * pv), nrow = m, ncol = pv)
   b1v <- matrix(take(m), nrow = m, ncol = 1)
   
+  # Extraction of Second-Layer Weights and Biases for u-Hemisphere:
   W2u <- matrix(take(m), nrow = 1, ncol = m)
   b2u <- matrix(take(1), nrow = 1, ncol = 1)
   
+  # Extraction of Second-Layer Weights and Biases for v-Hemisphere:
   W2v <- matrix(take(m), nrow = 1, ncol = m)
   b2v <- matrix(take(1), nrow = 1, ncol = 1)
   
+  # Extraction of Output-Layer Weights and Biases:
   W3 <- matrix(take(q * 2), nrow = q, ncol = 2)
   b3 <- matrix(take(q), nrow = q, ncol = 1)
   
+  # Return All Unpacked Parameters as Named List:
   list(
     W1u = W1u, b1u = b1u,
     W1v = W1v, b1v = b1v,
     W2u = W2u, b2u = b2u,
     W2v = W2v, b2v = b2v,
-    W3 = W3, b3 = b3
-  )
+    W3 = W3, b3 = b3)
 }
 
+# Function to Count Total Number of Parameters in Split-Brain Network:
 n_params_split <- function(pu, pv, m, q) {
   m*pu + m + m*pv + m + m + 1 + m + 1 + q*2 + q
 }
 
+# Function to Randomly Initialise Split-Brain Network Parameters:
 init_split_params <- function(pu, pv, m, q, sd = 0.1) {
   rnorm(n_params_split(pu, pv, m, q), mean = 0, sd = sd)
 }
 
+# Feed-Forward Function for Split-Brain Network with Objective Function Evaluation:
 forward_split <- function(theta, Xu, Xv, Y = NULL, m = 4, nu = 0) {
+
+  # Extraction of Input and Output Dimensions from Supplied Matrices:
   pu <- nrow(Xu)
   pv <- nrow(Xv)
   q  <- 2
   N  <- ncol(Xu)
   
+  # Unpacking Parameter Vector into Structured Weight and Bias Matrices:
   pars <- unpack_split_params(theta, pu, pv, m, q)
   
+  # Creation of Row Vector of Ones to "Broadcast" Bias Terms Across Observations:
   oneN <- matrix(1, nrow = 1, ncol = N)
   
+  # Computation of First Hidden-Layer Linear Combinations & Activations for u-Hemisphere:
   Z1u <- pars$W1u %*% Xu + pars$b1u %*% oneN
   A1u <- tanh(Z1u)
   
+  # Computation of First Hidden-Layer Linear Combinations & Activations for v-Hemisphere:
   Z1v <- pars$W1v %*% Xv + pars$b1v %*% oneN
   A1v <- tanh(Z1v)
   
+  # Computation of Second Hidden-Layer Linear Combinations & Activation for u-Hemisphere:
   Z2u <- pars$W2u %*% A1u + pars$b2u %*% oneN
   A2u <- tanh(Z2u)
   
+  # Computation of Second Hidden-Layer Linear Combinations & Activation for v-Hemisphere:
   Z2v <- pars$W2v %*% A1v + pars$b2v %*% oneN
   A2v <- tanh(Z2v)
   
+  # Row Binding the Two Hemisphere Activations for Input to Output Layer:
   A2 <- rbind(A2u, A2v)
   
+  # Computation of Output-Layer Linear Combinations and Softmax Probabilities:
   Z3 <- pars$W3 %*% A2 + pars$b3 %*% oneN
   P  <- softmax_mat(Z3)
   
+  # Storage of Feed Forward Outputs in a List:
   out <- list(
     P = P,
     Z1u = Z1u, A1u = A1u,
@@ -256,29 +262,39 @@ forward_split <- function(theta, Xu, Xv, Y = NULL, m = 4, nu = 0) {
     Z3 = Z3
   )
   
+  # Check for Response Matrix so that Objective Function can be Evaluated:
   if (!is.null(Y)) {
+
+    # Definition of Small Constant to Avoid log(0):
     eps <- 1e-12
+
+    # Computation of Cross-Entropy Component of the Objective Function
     ce <- -mean(colSums(Y * log(P + eps)))
     
+    # Computation of L2 Regularisation Penalty on Weight Matrices Component:
     reg <- (nu / 2) * (
       sum(pars$W1u^2) + sum(pars$W1v^2) +
       sum(pars$W2u^2) + sum(pars$W2v^2) +
       sum(pars$W3^2)
     )
     
+    # Storage of Total Objective Function & Spearate Compenents:
     out$loss <- ce + reg
     out$ce   <- ce
     out$reg  <- reg
   }
   
+  # Return of Feed-Forward Results:
   out
 }
 
+# Function to Convert Predicted Probabilities Into Class Predictions:
 predict_split_class <- function(theta, Xu, Xv, m = 4) {
   P <- forward_split(theta, Xu, Xv, m = m)$P
   max.col(t(P)) - 1
 }
 
+# Function to Compute Misclassification Rate:
 misclass_rate <- function(pred_class, Y) {
   truth <- max.col(t(Y)) - 1
   mean(pred_class != truth)
@@ -287,7 +303,7 @@ misclass_rate <- function(pred_class, Y) {
 
 Fitting Wrapper (OPTIONAL):
 
-```{r label FitSpliWrapper}
+```{r label FitSplitWrapper}
 #| echo: TRUE
 
 fit_split_network <- function(Xu_train, Xv_train, Y_train, m = 4, nu = 0,
@@ -395,7 +411,7 @@ if (file.exists("ValidationLoopResults.Rdata"))
     val_results$valid_err[i]  <- misclass_rate(va_pred, Y_valid)
   }
   
-  save(val_results, file = "ValidationLoopResults.Rdata")
+  save(val_results, split_fits, file = "ValidationLoopResults.Rdata")
 }
 
 val_results
