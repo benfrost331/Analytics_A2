@@ -175,19 +175,15 @@ unpack_split_params <- function(theta, pu, pv, m, q) {
     out
   }
   
-  # Extraction of First-Layer Weights and Biases for u-Hemisphere:
+  # Extraction of First-Layer Weights and Biases for u-Hemisphere & v-Hemisphere:
   W1u <- matrix(take(m * pu), nrow = m, ncol = pu)
   b1u <- matrix(take(m), nrow = m, ncol = 1)
-  
-  # Extraction of First-Layer Weights and Biases for v-Hemisphere:
   W1v <- matrix(take(m * pv), nrow = m, ncol = pv)
   b1v <- matrix(take(m), nrow = m, ncol = 1)
   
-  # Extraction of Second-Layer Weights and Biases for u-Hemisphere:
+  # Extraction of Second-Layer Weights and Biases for u-Hemisphere & v-Hemisphere:
   W2u <- matrix(take(m), nrow = 1, ncol = m)
   b2u <- matrix(take(1), nrow = 1, ncol = 1)
-  
-  # Extraction of Second-Layer Weights and Biases for v-Hemisphere:
   W2v <- matrix(take(m), nrow = 1, ncol = m)
   b2v <- matrix(take(1), nrow = 1, ncol = 1)
   
@@ -295,42 +291,6 @@ misclass_rate <- function(pred_class, Y) {
 }
 ```
 
-Fitting Wrapper (OPTIONAL):
-
-```{r label FitSplitWrapper}
-#| echo: TRUE
-
-fit_split_network <- function(Xu_train, Xv_train, Y_train, m = 4, nu = 0,
-                              maxit = 1000, n_starts = 3, seed = 2026) {
-  set.seed(seed)
-  
-  pu <- nrow(Xu_train)
-  pv <- nrow(Xv_train)
-  q  <- nrow(Y_train)
-  
-  best_fit <- NULL
-  best_val <- Inf
-  
-  for (s in 1:n_starts) {
-    theta0 <- init_split_params(pu, pv, m, q, sd = 0.1)
-    
-    fit <- optim(
-      par = theta0,
-      fn = function(th) forward_split(th, Xu_train, Xv_train, Y_train, m = m, nu = nu)$loss,
-      method = "BFGS",
-      control = list(maxit = maxit, reltol = 1e-8)
-    )
-    
-    if (fit$value < best_val) {
-      best_val <- fit$value
-      best_fit <- fit
-    }
-  }
-  
-  best_fit
-}
-```
-
 The forward pass was implemented explicitly for the split-brain architecture described in the assignment. Hyperbolic tangent activation functions were used on all hidden nodes, while the output layer used a two-class softmax activation. Since the response is binary and the network outputs class probabilities, the natural objective function is the multinomial cross-entropy loss. To control model complexity, an L2  penalty was added on the weight matrices, with regularisation level denoted by v. Bias terms were left unpenalised.
 
 ## h)
@@ -339,7 +299,7 @@ The forward pass was implemented explicitly for the split-brain architecture des
 
 Train-Validation Split
 
-```{r label = SplitData, echo = True}
+```{r label = SplitData, echo = TRUE}
 set.seed(2026)
 n <- nrow(dat)
 train_id <- sample(seq_len(n), size = floor(0.8 * n))
@@ -352,16 +312,11 @@ Y_train  <- Y[, train_id, drop = FALSE]
 Xu_valid <- Xu[, valid_id, drop = FALSE]
 Xv_valid <- Xv[, valid_id, drop = FALSE]
 Y_valid  <- Y[, valid_id, drop = FALSE]
-
-length(train_id)
-length(valid_id)
 ```
 
 Validation Loop Over Regularisation  Values
 
-```{r label = ValidationGrid}
-#| echo: TRUE
-
+```{r label = ValidationGrid, echo = TRUE}
 nu_grid <- exp(seq(-7, 3, length.out = 20))
 
 if (file.exists("ValidationLoopResults.Rdata"))
@@ -410,8 +365,7 @@ val_results
 
 Validation Plot
 
-```{r label = ValidationPlot}
-#| echo: TRUE
+```{r label = ValidationPlot, echo = TRUE}
 #| fig-width: 6
 #| fig-height: 6
 
@@ -421,9 +375,7 @@ ggplot(val_results, aes(x = nu, y = valid_ce)) +
   scale_x_log10() +
   labs(
     x = expression(nu),
-    y = "Validation cross-entropy",
-    title = "Validation cross-entropy against the regularisation level."
-  )
+    y = "Validation cross-entropy")
 ```
 
 Select Best Regularisation Level
