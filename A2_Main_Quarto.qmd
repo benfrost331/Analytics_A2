@@ -455,8 +455,7 @@ ggplot(val_results, aes(x = nu, y = valid_ce)) +
   scale_x_log10() +
   labs(
     x = expression(nu),
-    y = "Validation cross-entropy",
-    title = "Validation cross-entropy against the regularisation level."
+    y = "Validation cross-entropy"
   )
 ```
 
@@ -473,22 +472,31 @@ Build Prediction Grid
 ```{r label = ResponseGrid}
 #| echo: TRUE
 
+#Create sequences over our range of Fluid and Carbs values:
 fluid_seq <- seq(min(dat$Fluid), max(dat$Fluid), length.out = 100)
 carb_seq  <- seq(min(dat$Carbs), max(dat$Carbs), length.out = 100)
 
+#Create a grid of all combinations of Fluid, Carbs and Sex:
 grid_pred <- expand.grid(
   Fluid = fluid_seq,
   Carbs = carb_seq,
   Sex = c("Female", "Male")
 )
 
+#Fix the AveSpeed for each combination as 12km/h:
 grid_pred$AveSpeed <- 12
+
+#Convert Sex into a numeric variable:
 grid_pred$SexNum <- ifelse(grid_pred$Sex == "Male", 1, 0)
 
+#Create input matrices as needed by our split-brain network:
 Xu_grid <- t(as.matrix(grid_pred[, c("AveSpeed", "SexNum")]))
 Xv_grid <- t(as.matrix(grid_pred[, c("Fluid", "Carbs")]))
 
+#Evaluate the fitted model for each input in the grid:
 P_grid <- forward_split(best_fit_split$par, Xu_grid, Xv_grid, m = 4)$P
+
+#Get the predicted probabilities of bombing for each input in the grid:
 grid_pred$ProbBombed <- as.numeric(P_grid[2, ])
 ```
 
@@ -499,68 +507,24 @@ Surface-Style Heatmaps
 #| fig-width: 8
 #| fig-height: 4
 
+#Plotting the response surface for a runner targeting 12km/h, showing the predicted probability of bombing over Fluid and Carbs, with separate plots for each Sex:
 ggplot(grid_pred, aes(x = Fluid, y = Carbs, fill = ProbBombed)) +
   geom_tile() +
   facet_wrap(~ Sex) +
   labs(
-    title = "Predicted probability of bombing for a runner targeting 12 km/h.",
     fill = "Pr(Bombed)"
-  )
-```
-
-Contour Plots
-
-```{r label = ResponseContours}
-#| echo: TRUE
-#| fig-width: 8
-#| fig-height: 4
-
-ggplot(grid_pred, aes(x = Fluid, y = Carbs, z = ProbBombed)) +
-  geom_contour(bins = 10) +
-  facet_wrap(~ Sex) +
-  labs(
-    title = "Response contours for bombing probability at 12 km/h."
-  )
-```
-
-Optional Line Slices for Easier Interpretation
-
-```{r label = LineSlices}
-#| echo: TRUE
-#| fig-width: 8
-#| fig-height: 4
-
-slice_grid <- expand.grid(
-  Fluid = seq(min(dat$Fluid), max(dat$Fluid), length.out = 150),
-  Carbs = quantile(dat$Carbs, probs = c(0.25, 0.5, 0.75)),
-  Sex = c("Female", "Male")
-)
-
-slice_grid$AveSpeed <- 12
-slice_grid$SexNum <- ifelse(slice_grid$Sex == "Male", 1, 0)
-
-Xu_slice <- t(as.matrix(slice_grid[, c("AveSpeed", "SexNum")]))
-Xv_slice <- t(as.matrix(slice_grid[, c("Fluid", "Carbs")]))
-
-P_slice <- forward_split(best_fit_split$par, Xu_slice, Xv_slice, m = 4)$P
-slice_grid$ProbBombed <- as.numeric(P_slice[2, ])
-slice_grid$CarbsLevel <- factor(round(slice_grid$Carbs, 1))
-
-ggplot(slice_grid, aes(x = Fluid, y = ProbBombed, colour = CarbsLevel)) +
-  geom_line() +
-  facet_wrap(~ Sex) +
-  labs(
-    title = "Predicted bombing probability versus fluid intake at selected carbohydrate levels.",
-    y = "Pr(Bombed)",
-    colour = "Carbs"
   )
 ```
 
 ## j)
 
-The response curves can be interpreted as showing how the estimated probability of bombing varies with fluid intake and carbohydrate intake for runners targeting 12 km/h over the first half of the marathon. After inspecting the fitted surfaces, identify the region in the (Fluid,Carbs)-plane where the predicted probability of bombing is lowest. This region provides model-based guidance on fuelling strategy.
+The response curves show how the estimated probability of bombing varies with fluid intake and carbohydrate intake for runners targeting 12 km/h over the first half of the marathon. In both panels, it is clear that there is an optimal region of low probability of bombing (dark area), which is surrounded by a higher risk area as one leaves this zone (lighter area).
 
-If the fitted contours show that bombing risk falls as carbohydrate intake increases up to a point, and similarly decreases over a moderate range of fluid intake, then the model would suggest that runners targeting this pace should avoid under-fuelling in either dimension. Also comment on whether one sex appears to have systematically higher or lower predicted bombing risk than the other, holding pace and nutrition fixed. If the two panels are similar, conclude that sex has little differential effect; if they differ meaningfully, describe how the recommended fuelling region shifts between females and males.
+The lowest probability of bombing happens when runners have a moderate fluid intake (around 1 to 1.6 liters per hour), and a moderate to high carbohydrate intake (around 60 to 80 grams per hour). Moving away from this results in a far higher probability of bombing.
+
+This means that for a runner targeting a 12km/h pace over the first half of the race, it is optimal for them to be taking in between 1 and 1.6 liters per hour of fluids, and between 60 and 80 grams per hour of carbohydrates. In particular, runners should try to avoid having very low carbohydrate intake, as this increases the probability of bombing a lot, even if fluid intake is sufficient.
+
+When comparing the two panels, the shape of the response surfaces is the same for each sex, which indicates that the relationship between bombing and carbohydrate and fluid intake is consistent between sex. However, the region of low probability of bombing for males is slightly smaller than for females, which indicates that males have a slightly smaller window of fluid and carbohydrate intake which minimises the probability of bombing. This does not, however, change the optimal fueling strategy for either sex.
 
 ## k)
 
