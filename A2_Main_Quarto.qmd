@@ -206,7 +206,7 @@ unpack_split_params <- function(theta, pu, pv, m, q) {
 
 # Function to Count Total Number of Parameters in Split-Brain Network:
 n_params_split <- function(pu, pv, m, q) {
-  m*pu + m + m*pv + m + m + 1 + m + 1 + q*2 + q
+  m*(pu + pv + 2) + 2*q + 2*m + 2 + q
 }
 
 # Function to Randomly Initialise Split-Brain Network Parameters:
@@ -331,7 +331,7 @@ fit_split_network <- function(Xu_train, Xv_train, Y_train, m = 4, nu = 0,
 }
 ```
 
-The forward pass was implemented explicitly for the split-brain architecture described in the assignment. Hyperbolic tangent activation functions were used on all hidden nodes, while the output layer used a two-class softmax activation. Since the response is binary and the network outputs class probabilities, the natural objective function is the multinomial cross-entropy loss. To control model complexity, an L2  penalty was added on the weight matrices, with regularisation level denoted by v. Bias terms were left unpenalised.
+The forward pass was implemented explicitly for the split-brain architecture described in the assignment. Hyperbolic tangent activation functions were used on all hidden nodes, while the output layer used a two-class softmax activation. Since the response is binary and the network outputs class probabilities, the natural objective function is the multinomial cross-entropy loss. To control model complexity, an L2 penalty was added on the weight matrices, with regularisation level denoted by v. Bias terms were left unpenalised.
 
 ## h)
 
@@ -340,72 +340,104 @@ The forward pass was implemented explicitly for the split-brain architecture des
 Train-Validation Split
 
 ```{r label = SplitData, echo = True}
+#Set seed for reproductability:
 set.seed(2026)
+#Calculate the number of observations:
 n <- nrow(dat)
+#Randomly select 80% of the data for the training set:
 train_id <- sample(seq_len(n), size = floor(0.8 * n))
+#Use the remaining 20% as the validation set:
 valid_id <- setdiff(seq_len(n), train_id)
 
-Xu_train <- Xu[, train_id, drop = FALSE]
-Xv_train <- Xv[, train_id, drop = FALSE]
-Y_train  <- Y[, train_id, drop = FALSE]
+#Subset input and response matrices for the training set:
+Xu_train <- Xu[, train_id, drop = FALSE]    #The u-hemisphere inputs.
+Xv_train <- Xv[, train_id, drop = FALSE]    #The v-hemisphere inputs.
+Y_train  <- Y[, train_id, drop = FALSE]   #The responses.
 
-Xu_valid <- Xu[, valid_id, drop = FALSE]
-Xv_valid <- Xv[, valid_id, drop = FALSE]
-Y_valid  <- Y[, valid_id, drop = FALSE]
+#Subset input and response matrices for the validation set:
+Xu_valid <- Xu[, valid_id, drop = FALSE]    #The u-hemisphere inputs.
+Xv_valid <- Xv[, valid_id, drop = FALSE]    #The v-hemisphere inputs.
+Y_valid  <- Y[, valid_id, drop = FALSE]   #The responses.
 
-length(train_id)
-length(valid_id)
 ```
 
-Validation Loop Over Regularisation  Values
+Validation Loop Over Regularisation Values
 
 ```{r label = ValidationGrid}
 #| echo: TRUE
 
-nu_grid <- exp(seq(-7, 3, length.out = 20))
+#Create a grid of nu (regularisation) values on a logarithmic scale:
+nu_grid <- exp(seq(-8,0,length = 20)) 
 
+#If the tuning has already been run, used the saved results:
 if (file.exists("ValidationLoopResults.Rdata"))
 {
   load("ValidationLoopResults.Rdata")
 } else 
 {
+  #Create a data frame to store the different results for each nu:
   val_results <- data.frame(
     nu = nu_grid,
-    train_loss = NA_real_,
-    train_ce = NA_real_,
-    valid_ce = NA_real_,
-    train_err = NA_real_,
-    valid_err = NA_real_
+    train_loss = NA_real_, #Training loss (penalised objective). 
+    train_ce = NA_real_, #Training cross-entropy. 
+    valid_ce = NA_real_, #Validation cross-entropy. 
+    train_err = NA_real_, #Training misclassification error. 
+    valid_err = NA_real_ #Validation misclassification error. 
   )
   
+  #Store fitted models for each nu:
   split_fits <- vector("list", length(nu_grid))
   
+  #Loop over our nu grid:
   for (i in seq_along(nu_grid)) {
+    
+    #Fit the split-brain network to the current nu value:
     fit_i <- fit_split_network(
       Xu_train, Xv_train, Y_train,
       m = 4, nu = nu_grid[i],
-      maxit = 800, n_starts = 3, seed = 2026 + i
+      maxit = 800, n_starts = 8, seed = 2026 + i
     )
     
+    #Store the model:
     split_fits[[i]] <- fit_i
     
+    #Evaluate the model performance on the training and validation sets:
     tr_eval <- forward_split(fit_i$par, Xu_train, Xv_train, Y_train, m = 4, nu = nu_grid[i])
     va_eval <- forward_split(fit_i$par, Xu_valid, Xv_valid, Y_valid, m = 4, nu = nu_grid[i])
     
+    #Make predicted class labels for training and validation sets:
     tr_pred <- predict_split_class(fit_i$par, Xu_train, Xv_train, m = 4)
     va_pred <- predict_split_class(fit_i$par, Xu_valid, Xv_valid, m = 4)
     
-    val_results$train_loss[i] <- tr_eval$loss
-    val_results$train_ce[i]   <- tr_eval$ce
-    val_results$valid_ce[i]   <- va_eval$ce
-    val_results$train_err[i]  <- misclass_rate(tr_pred, Y_train)
-    val_results$valid_err[i]  <- misclass_rate(va_pred, Y_valid)
+    #Store the results:
+    val_results$train_loss[i] <- tr_eval$loss  #Training loss (penalised objective). 
+    val_results$train_ce[i]   <- tr_eval$ce  #Training cross-entropy.  
+    val_results$valid_ce[i]   <- va_eval$ce  #Validation cross-entropy.
+    val_results$train_err[i]  <- misclass_rate(tr_pred, Y_train)  #Training misclassification error. 
+    val_results$valid_err[i]  <- misclass_rate(va_pred, Y_valid)  #Validation misclassification error. 
   }
-  
+  #Save the results for future use:
   save(val_results, split_fits, file = "ValidationLoopResults.Rdata")
 }
 
+#Display the results
 val_results
+```
+
+Select Best Regularisation Level
+
+```{r label = ChooseBestNu}
+#| echo: TRUE
+#Indentifying the index of the best nu value (the one that minimises the validation cross-entropy):
+best_idx <- which.min(val_results$valid_ce)
+#Extracting this corresponding optimal nu value:
+best_nu  <- val_results$nu[best_idx]
+#Extracting this corresponding fitted model:
+best_fit_split <- split_fits[[best_idx]]
+
+#Displaying this nu value and its corresponding performance metrics:
+best_nu
+val_results[best_idx, ]
 ```
 
 Validation Plot
@@ -415,8 +447,10 @@ Validation Plot
 #| fig-width: 6
 #| fig-height: 6
 
+#Plotting validation cross-entropy against the regularisation parameter nu: 
 ggplot(val_results, aes(x = nu, y = valid_ce)) +
   geom_line() +
+  geom_point(data = val_results[best_idx, ], size = 4, colour = "red") +
   geom_point() +
   scale_x_log10() +
   labs(
@@ -426,23 +460,11 @@ ggplot(val_results, aes(x = nu, y = valid_ce)) +
   )
 ```
 
-Select Best Regularisation Level
+Figure 5 plots the validation cross-entropy against the regularisation parameter $\nu$. The curve initially decreases and reaches a minimum after which it increases sharply and eventually plateaus at higher values of $\nu$. The minimum value validation cross-entropy value occurs at $\hat{\nu} = 0.001186388$, and this is therefore selected as the optimal level of regularisation. This point is highlighted on the plot.
 
-```{r label = ChooseBestNu}
-#| echo: TRUE
+This chosen $\nu$ value achieves a good balance between model fit and complexity, as it minimises the validation cross-entropy.
 
-best_idx <- which.min(val_results$valid_ce)
-best_nu  <- val_results$nu[best_idx]
-best_fit_split <- split_fits[[best_idx]]
-
-best_nu
-val_results[best_idx, ]
-```
-
-
-The validation curve is used to select the regularisation level ν that minimises the validation cross-entropy. After running the code, report the chosen value of ν and describe the overall shape of the curve. In particular, comment on whether very small values of ν appear to overfit and whether very large values appear to oversmooth the fitted decision surface. The selected value of ν is the one corresponding to the lowest validation error on the holdout set.
-
-## i) 
+## i)
 
 ### Response curves over Fluid, Carbs, and Sex for a 12 km/h Runner
 
