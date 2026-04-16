@@ -535,60 +535,79 @@ Fit a Comparable Standard Dense Network
 ```{r label = StandardNetworkFunctions}
 #| echo: TRUE
 
+#Combine the split matrices into one input matrix
 X_full <- rbind(Xu, Xv)
 
+#Function to Unpack Parameter Vector into standard Network Weights and Biases:
 unpack_standard_params <- function(theta, p, m1, m2, q) {
   idx <- 1
   
+  # Helper Function to Extract Next k Parameters from Theta:
   take <- function(k) {
     out <- theta[idx:(idx + k - 1)]
     idx <<- idx + k
     out
   }
   
+  #First hidden layer parameters
   W1 <- matrix(take(m1 * p), nrow = m1, ncol = p)
   b1 <- matrix(take(m1), nrow = m1, ncol = 1)
   
+  #second hidden layer parameters
   W2 <- matrix(take(m2 * m1), nrow = m2, ncol = m1)
   b2 <- matrix(take(m2), nrow = m2, ncol = 1)
   
+  #third hidden layer parameters
   W3 <- matrix(take(q * m2), nrow = q, ncol = m2)
   b3 <- matrix(take(q), nrow = q, ncol = 1)
   
   list(W1 = W1, b1 = b1, W2 = W2, b2 = b2, W3 = W3, b3 = b3)
 }
 
+#Function to determine the number of parameters
 n_params_standard <- function(p, m1, m2, q) {
   m1*p + m1 + m2*m1 + m2 + q*m2 + q
 }
 
+#Initialising the parameters randomly
 init_standard_params <- function(p, m1, m2, q, sd = 0.1) {
   rnorm(n_params_standard(p, m1, m2, q), mean = 0, sd = sd)
 }
 
+#Forward pass through the neural network
 forward_standard <- function(theta, X, Y = NULL, m1 = 8, m2 = 2, nu = 0) {
   p <- nrow(X)
   q <- 2
   N <- ncol(X)
   
+  #Unpacking Parameter Vector into Structured Weight and Bias Matrices:
   pars <- unpack_standard_params(theta, p, m1, m2, q)
+  #Creation of Row Vector of Ones to "Broadcast" Bias Terms Across Observations:
   oneN <- matrix(1, nrow = 1, ncol = N)
   
+  #First hidden layer
   Z1 <- pars$W1 %*% X + pars$b1 %*% oneN
   A1 <- tanh(Z1)
   
+  #second hidden layer
   Z2 <- pars$W2 %*% A1 + pars$b2 %*% oneN
   A2 <- tanh(Z2)
   
+  #Third hidden layer
   Z3 <- pars$W3 %*% A2 + pars$b3 %*% oneN
   P <- softmax_mat(Z3)
   
   out <- list(P = P)
   
+  #Check for Response Matrix so that Objective Function can be Evaluated:
   if (!is.null(Y)) {
+    #Definition of Small Constant to Avoid log(0):
     eps <- 1e-12
+    #Computation of Cross-Entropy Component of the Objective Function
     ce <- -mean(colSums(Y * log(P + eps)))
+    #Computation of L2 Regularisation Penalty on Weight Matrices Component:
     reg <- (nu / 2) * (sum(pars$W1^2) + sum(pars$W2^2) + sum(pars$W3^2))
+    #Storage of Total Objective Function & Spearate Compenents:
     out$loss <- ce + reg
     out$ce <- ce
     out$reg <- reg
@@ -597,8 +616,9 @@ forward_standard <- function(theta, X, Y = NULL, m1 = 8, m2 = 2, nu = 0) {
   out
 }
 
+#Function to fit the standard nnetwork using optimisation
 fit_standard_network <- function(X_train, Y_train, m1 = 8, m2 = 2, nu = 0,
-                                 maxit = 1000, n_starts = 3, seed = 2026) {
+                                 maxit = 1000, n_starts = 8, seed = 2026) {
   set.seed(seed)
   
   p <- nrow(X_train)
@@ -607,6 +627,7 @@ fit_standard_network <- function(X_train, Y_train, m1 = 8, m2 = 2, nu = 0,
   best_fit <- NULL
   best_val <- Inf
   
+  #Multiple starts to avoid poor local minimums
   for (s in 1:n_starts) {
     theta0 <- init_standard_params(p, m1, m2, q, sd = 0.1)
     
@@ -617,6 +638,7 @@ fit_standard_network <- function(X_train, Y_train, m1 = 8, m2 = 2, nu = 0,
       control = list(maxit = maxit, reltol = 1e-8)
     )
     
+    #Store the best solution
     if (fit$value < best_val) {
       best_val <- fit$value
       best_fit <- fit
@@ -626,6 +648,7 @@ fit_standard_network <- function(X_train, Y_train, m1 = 8, m2 = 2, nu = 0,
   best_fit
 }
 
+#Generate predicted class labels from the standard nnetwork
 predict_standard_class <- function(theta, X, m1 = 8, m2 = 2) {
   P <- forward_standard(theta, X, m1 = m1, m2 = m2)$P
   max.col(t(P)) - 1
@@ -636,7 +659,7 @@ Compare Split-Brain and Standard Networks
 
 ```{r label = CompareModels}
 #| echo: TRUE
-
+#Subset data into training and validation sets.
 X_train <- X_full[, train_id, drop = FALSE]
 X_valid <- X_full[, valid_id, drop = FALSE]
 
@@ -645,16 +668,18 @@ if (file.exists("NetworkComparisonObjects.RData"))
   load("NetworkComparisonObjects.RData")
 } else 
 {
-  # use same best_nu for a fair first comparison
+  #use same best_nu for a fair first comparison and fit a standard nnet
   fit_standard_bestnu <- fit_standard_network(
     X_train, Y_train,
     m1 = 8, m2 = 2, nu = best_nu,
     maxit = 800, n_starts = 3, seed = 999
   )
   
+  #Determine validation cross entropy for each model
   split_valid_ce <- forward_split(best_fit_split$par, Xu_valid, Xv_valid, Y_valid, m = 4, nu = best_nu)$ce
   std_valid_ce   <- forward_standard(fit_standard_bestnu$par, X_valid, Y_valid, m1 = 8, m2 = 2, nu = best_nu)$ce
   
+  #Determine validation misclassification for each model
   split_valid_err <- misclass_rate(
     predict_split_class(best_fit_split$par, Xu_valid, Xv_valid, m = 4),
     Y_valid
@@ -664,16 +689,16 @@ if (file.exists("NetworkComparisonObjects.RData"))
     predict_standard_class(fit_standard_bestnu$par, X_valid, m1 = 8, m2 = 2),
     Y_valid
   )
-  
+  #Save results
   save(fit_standard_bestnu, split_valid_ce, std_valid_ce, split_valid_err, std_valid_err, file = "NetworkComparisonObjects.RData")
 }
-
+#Display results in a table
 comparison_tbl <- data.frame(
   Model = c("Split-Brain", "Standard Dense"),
   Validation_CE = c(split_valid_ce, std_valid_ce),
   Validation_Misclassification = c(split_valid_err, std_valid_err)
 )
-
+#Display the table
 comparison_tbl
 ```
 
