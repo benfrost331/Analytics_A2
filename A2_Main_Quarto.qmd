@@ -118,7 +118,7 @@ softmax_mat <- function(Z) {
   Z_shift <- sweep(Z, 2, apply(Z, 2, max), FUN = "-")
   # Element-Wise Exponentiation of Shifted Matrix:
   exp_Z <- exp(Z_shift)
-  # Normalisation of Each Column Returning Class Probabilities:
+  # Normalisation of Each Column, Returning Class Probabilities:
   exp_Z / matrix(colSums(exp_Z), nrow = nrow(Z), ncol = ncol(Z), byrow = TRUE)
 }
 ```
@@ -297,8 +297,7 @@ misclass_rate <- function(pred_class, Y) {
 
 Fitting Wrapper (OPTIONAL):
 
-```{r label FitSplitWrapper}
-#| echo: TRUE
+```{r label = FitSplitWrapper, echo = TRUE}
 
 fit_split_network <- function(Xu_train, Xv_train, Y_train, m = 4, nu = 0,
                               maxit = 1000, n_starts = 3, seed = 2026) {
@@ -339,7 +338,7 @@ The forward pass was implemented explicitly for the split-brain architecture des
 
 Train-Validation Split
 
-```{r label = SplitData, echo = True}
+```{r label = SplitData, echo = TRUE}
 #Set seed for reproductability:
 set.seed(2026)
 #Calculate the number of observations:
@@ -363,8 +362,7 @@ Y_valid  <- Y[, valid_id, drop = FALSE]   #The responses.
 
 Validation Loop Over Regularisation Values
 
-```{r label = ValidationGrid}
-#| echo: TRUE
+```{r label = ValidationGrid, echo = TRUE}
 
 #Create a grid of nu (regularisation) values on a logarithmic scale:
 nu_grid <- exp(seq(-8,0,length = 20)) 
@@ -426,8 +424,7 @@ val_results
 
 Select Best Regularisation Level
 
-```{r label = ChooseBestNu}
-#| echo: TRUE
+```{r label = ChooseBestNu, echo = TRUE}
 #Indentifying the index of the best nu value (the one that minimises the validation cross-entropy):
 best_idx <- which.min(val_results$valid_ce)
 #Extracting this corresponding optimal nu value:
@@ -442,8 +439,7 @@ val_results[best_idx, ]
 
 Validation Plot
 
-```{r label = ValidationPlot}
-#| echo: TRUE
+```{r label = ValidationPlot, echo = TRUE}
 #| fig-width: 6
 #| fig-height: 6
 
@@ -469,8 +465,7 @@ This chosen $\nu$ value achieves a good balance between model fit and complexity
 
 Build Prediction Grid
 
-```{r label = ResponseGrid}
-#| echo: TRUE
+```{r label = ResponseGrid, echo = TRUE}
 
 #Create sequences over our range of Fluid and Carbs values:
 fluid_seq <- seq(min(dat$Fluid), max(dat$Fluid), length.out = 100)
@@ -502,7 +497,7 @@ grid_pred$ProbBombed <- as.numeric(P_grid[2, ])
 
 Surface-Style Heatmaps
 
-```{r label = ResponseHeatmaps}
+```{r label = ResponseHeatmaps, echo = TRUE}
 #| echo: TRUE
 #| fig-width: 8
 #| fig-height: 4
@@ -532,9 +527,7 @@ When comparing the two panels, the shape of the response surfaces is the same fo
 
 Fit a Comparable Standard Dense Network
 
-```{r label = StandardNetworkFunctions}
-#| echo: TRUE
-
+```{r label = StandardNetworkFunctions, echo = TRUE}
 X_full <- rbind(Xu, Xv)
 
 unpack_standard_params <- function(theta, p, m1, m2, q) {
@@ -634,8 +627,7 @@ predict_standard_class <- function(theta, X, m1 = 8, m2 = 2) {
 
 Compare Split-Brain and Standard Networks
 
-```{r label = CompareModels}
-#| echo: TRUE
+```{r label = CompareModels, echo = TRUE}
 
 X_train <- X_full[, train_id, drop = FALSE]
 X_valid <- X_full[, valid_id, drop = FALSE]
