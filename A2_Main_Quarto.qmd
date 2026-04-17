@@ -309,8 +309,7 @@ fit_split_network <- function(Xu_train, Xv_train, Y_train, m = 4, nu = 0,
       par = theta0,
       fn = function(th) forward_split(th, Xu_train, Xv_train, Y_train, m = m, nu = nu)$loss,
       method = "BFGS",
-      control = list(maxit = maxit, reltol = 1e-8)
-    )
+      control = list(maxit = maxit, reltol = 1e-8))
     
     if (fit$value < best_val) {
       best_val <- fit$value
