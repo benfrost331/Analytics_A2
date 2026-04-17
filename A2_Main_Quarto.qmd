@@ -626,6 +626,7 @@ fit_standard_network <- function(X_train, Y_train, m1 = 8, m2 = 2, nu = 0, maxit
       best_fit <- fit
     }
   }
+  best_fit
 }
 
 # Generate Predicted Class Labels from the Standard NN:
@@ -670,7 +671,7 @@ if (file.exists("NetworkComparisonObjects.RData"))
 
 # Create Performance Comparison Results Table:
 comparison_tbl <- data.frame(
-  Model = c("Split-Brain", "Standard Dense"),
+  Model = c("Split-Brain", "Standard Network"),
   Validation_CE = c(split_valid_ce, std_valid_ce),
   Validation_Misclassification = c(split_valid_err, std_valid_err))
 
@@ -684,4 +685,8 @@ cat(knitr::kable(
         align = c("l", "c", "c")))
 ```
 
-To test whether the split-brain network provides an empirical advantage, a standard neural network was fit on using the same training and validation data at the same value of ˆν. The split-brain network has a far lower validation cross-entropy of 0.107 vs 0.334 for the standard neural network. The split-brain network also has a lower misclassification error of 0.056 vs 0.125 for the standard network. This provides clear empirical evidence that the split-brain network improves the predictive performance of this problem.
+To test whether the split-brain network provides an empirical advantage, a standard neural network was fit using the same training and validation data, at the same value of $\hat{\nu}$, and yielded the following results:
+
+The standard neural network has a far lower validation cross-entropy of $0.053$ vs $0.107$ for the split brain network. The standard neural network also has a lower misclassification error of $0.014$ vs $0.056$ for the split brain network.
+
+This provides clear empirical evidence that the split-brain network does not improve the predictive performance of this problem.
