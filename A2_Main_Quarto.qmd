@@ -282,36 +282,45 @@ misclass_rate <- function(pred_class, Y) {
 }
 ```
 
-Fitting Wrapper:
+Fitting Function:
 
-```{r label = FitSplitWrapper, echo = TRUE}
-
-fit_split_network <- function(Xu_train, Xv_train, Y_train, m = 4, nu = 0,
-                              maxit = 1000, n_starts = 3, seed = 2026) {
+```{r label = FitSplitFunction, echo = TRUE}
+fit_split_network <- function(Xu_train, Xv_train, Y_train, m = 4, nu = 0, maxit = 1000, n_starts = 3, seed = 2026) {
+  
+  # Setting Seed for Reproducibility:
   set.seed(seed)
   
+  # Determining Input and Output Dimensions:
   pu <- nrow(Xu_train)
   pv <- nrow(Xv_train)
   q  <- nrow(Y_train)
   
+  # Initialising Objects to Track the Best Fit Across Random Starts:
   best_fit <- NULL
   best_val <- Inf
   
+  # Running Multiple Starts to Reduce the Risk of Poor Local Minima:
   for (s in 1:n_starts) {
+    
+    # Generating a Random Initial Parameter Vector:
     theta0 <- init_split_params(pu, pv, m, q, sd = 0.1)
     
+    # Optimising the Split-Brain Network Objective Function:
     fit <- optim(
       par = theta0,
       fn = function(th) forward_split(th, Xu_train, Xv_train, Y_train, m = m, nu = nu)$loss,
       method = "BFGS",
-      control = list(maxit = maxit, reltol = 1e-8))
+      control = list(maxit = maxit, reltol = 1e-8)
+    )
     
+    # Updating the Stored Best Fit if the Current Start Improves the Objective Value:
     if (fit$value < best_val) {
       best_val <- fit$value
       best_fit <- fit
     }
   }
   
+  # Returning the Best Optimisation Result Across All Starts:
   best_fit
 }
 ```
@@ -446,7 +455,7 @@ This chosen $\nu$ value achieves a good balance between model fit and complexity
 Build Prediction Grid
 
 ```{r label = ResponseGrid, echo = TRUE}
-# Create Sequences Over `suitable Range of Fluid and Carbs Values:
+# Create Sequences Over Suitable Range of Fluid and Carbs Values:
 fluid_seq <- seq(min(dat$Fluid), max(dat$Fluid), length.out = 100)
 carb_seq  <- seq(min(dat$Carbs), max(dat$Carbs), length.out = 100)
 
@@ -547,7 +556,7 @@ init_standard_params <- function(p, m1, m2, q, sd = 0.1) {
   rnorm(n_params_standard(p, m1, m2, q), mean = 0, sd = sd)
 }
 
-# Forward Pass Through the NN:
+# Feed-Forward Function for Standard Network with Objective Function Evaluation:
 forward_standard <- function(theta, X, Y = NULL, m1 = 8, m2 = 2, nu = 0) {
   p <- nrow(X)
   q <- 2
@@ -586,6 +595,8 @@ forward_standard <- function(theta, X, Y = NULL, m1 = 8, m2 = 2, nu = 0) {
     out$ce <- ce
     out$reg <- reg
   }
+  
+  # Return Feed-Forward Result:
   return(out)
 }
 
