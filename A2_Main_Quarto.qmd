@@ -330,21 +330,21 @@ Since the response is binary and the network outputs class probabilities, the ch
 Train-Validation Split
 
 ```{r label = SplitData, echo = TRUE}
-#Set seed for reproductability:
+# Set Seed for Reproductability:
 set.seed(2026)
-#Calculate the number of observations:
+# Calculate the Number of Observations:
 n <- nrow(dat)
-#Randomly select 80% of the data for the training set:
+# Randomly Select 80% of the Data for the Training Set:
 train_id <- sample(seq_len(n), size = floor(0.8 * n))
-#Use the remaining 20% as the validation set:
+# Use the Remaining 20% as the Validation Set:
 valid_id <- setdiff(seq_len(n), train_id)
 
-#Subset input and response matrices for the training set:
+# Subset Input and Response Matrices for the Training Set:
 Xu_train <- Xu[, train_id, drop = FALSE]    #The u-hemisphere inputs.
 Xv_train <- Xv[, train_id, drop = FALSE]    #The v-hemisphere inputs.
 Y_train  <- Y[, train_id, drop = FALSE]   #The responses.
 
-#Subset input and response matrices for the validation set:
+# Subset Input and Response Matrices for the Validation Set:
 Xu_valid <- Xu[, valid_id, drop = FALSE]    #The u-hemisphere inputs.
 Xv_valid <- Xv[, valid_id, drop = FALSE]    #The v-hemisphere inputs.
 Y_valid  <- Y[, valid_id, drop = FALSE]   #The responses.
@@ -355,16 +355,16 @@ Validation Loop Over Regularisation Values
 
 ```{r label = ValidationGrid, echo = TRUE}
 
-#Create a grid of nu (regularisation) values on a logarithmic scale:
+# Create a Grid of Nu (Regularisation) Values on a Logarithmic Scale:
 nu_grid <- exp(seq(-8,0,length = 20)) 
 
-#If the tuning has already been run, used the saved results:
+# If the Tuning has Already Been Run, Used Saved Results:
 if (file.exists("ValidationLoopResults.Rdata"))
 {
   load("ValidationLoopResults.Rdata")
 } else 
 {
-  #cCreate a Data Frame to store the different results for each nu:
+  # Create a Data Frame to store the different results for each nu:
   val_results <- data.frame(
     nu = nu_grid,
     train_loss = NA_real_, #Training loss (penalised objective). 
@@ -386,7 +386,7 @@ if (file.exists("ValidationLoopResults.Rdata"))
       m = 4, nu = nu_grid[i],
       maxit = 800, n_starts = 8, seed = 2026 + i)
     
-    # Store the model:
+    # Store the Model:
     split_fits[[i]] <- fit_i
     
     # Evaluate the Model Performance on the Training and Validation Sets:
@@ -415,14 +415,14 @@ val_results
 Select Best Regularisation Level
 
 ```{r label = ChooseBestNu, echo = TRUE}
-# Indentifying the index of the best nu value (the one that minimises the validation cross-entropy):
+# Indentifying Index of the Best Nu Value (the one that minimises the validation cross-entropy):
 best_idx <- which.min(val_results$valid_ce)
-# Extracting this corresponding optimal nu value:
+# Extracting this Corresponding Optimal Nu Value:
 best_nu  <- val_results$nu[best_idx]
-# Extracting this corresponding fitted model:
+# Extracting this Corresponding Fitted Model:
 best_fit_split <- split_fits[[best_idx]]
 
-# Displaying this nu value and its corresponding performance metrics:
+# Displaying this Nu Value and its Corresponding Performance Metrics:
 best_nu
 val_results[best_idx, ]
 ```
@@ -433,7 +433,7 @@ Validation Plot
 #| fig-width: 6
 #| fig-height: 6
 
-# Plotting validation cross-entropy against the regularisation parameter nu: 
+# Plotting Validation Cross-Entropy Against the Regularisation Parameter Nu: 
 ggplot(val_results, aes(x = nu, y = valid_ce)) +
   geom_line() +
   geom_point(data = val_results[best_idx, ], size = 4, colour = "red") +
