@@ -432,8 +432,7 @@ ggplot(val_results, aes(x = nu, y = valid_ce)) +
   geom_point(data = val_results[best_idx, ], size = 4, colour = "red") +
   geom_point() +
   scale_x_log10() +
-  labs(x = expression(nu),
-       y = "Validation cross-entropy")
+  labs(x = expression(nu), y = "Validation cross-entropy")
 ```
 
 Figure 5 plots the validation cross-entropy against the regularisation parameter $\nu$. The curve initially decreases and reaches a minimum after which it increases sharply and eventually plateaus at higher values of $\nu$. The minimum value validation cross-entropy value occurs at $\hat{\nu} = 0.001186388$, and this is therefore selected as the optimal level of regularisation. This point is highlighted on the plot.
@@ -447,24 +446,24 @@ This chosen $\nu$ value achieves a good balance between model fit and complexity
 Build Prediction Grid
 
 ```{r label = ResponseGrid, echo = TRUE}
-# Create sequences over our range of Fluid and Carbs values:
+# Create Sequences Over `suitable Range of Fluid and Carbs Values:
 fluid_seq <- seq(min(dat$Fluid), max(dat$Fluid), length.out = 100)
 carb_seq  <- seq(min(dat$Carbs), max(dat$Carbs), length.out = 100)
 
-# Create a grid of all combinations of Fluid, Carbs and Sex:
+# Create a Grid of all Combinations of Fluid, Carbs and Sex:
 grid_pred <- expand.grid(Fluid = fluid_seq, Carbs = carb_seq, Sex = c("Female", "Male"))
 
-# Fix the AveSpeed for each combination as 12km/h:
+# Fix the AveSpeed for Each Combination as 12km/h:
 grid_pred$AveSpeed <- 12
 
-# Convert Sex into a numeric variable:
+# Convert Sex into a Numeric Variable:
 grid_pred$SexNum <- ifelse(grid_pred$Sex == "Male", 1, 0)
 
-# Create input matrices as needed by our split-brain network:
+# Create Input Matrices as Needed by Split-Brain Network:
 Xu_grid <- t(as.matrix(grid_pred[, c("AveSpeed", "SexNum")]))
 Xv_grid <- t(as.matrix(grid_pred[, c("Fluid", "Carbs")]))
 
-# Evaluate the fitted model for each input in the grid:
+# Evaluate Fitted Model for Each Input in the Grid:
 P_grid <- forward_split(best_fit_split$par, Xu_grid, Xv_grid, m = 4)$P
 
 # Get the Predicted Probabilities of Bombing for Each Input in the Grid:
@@ -512,6 +511,8 @@ X_full <- rbind(Xu, Xv)
 
 # Function to Unpack Parameter Vector into Standard Network Weights and Biases:
 unpack_standard_params <- function(theta, p, m1, m2, q) {
+  
+  # Index for Position Tracking in Parameter Vector:
   idx <- 1
   
   # Helper Function to Extract Next k Parameters from Theta:
@@ -585,11 +586,11 @@ forward_standard <- function(theta, X, Y = NULL, m1 = 8, m2 = 2, nu = 0) {
     out$ce <- ce
     out$reg <- reg
   }
+  return(out)
 }
 
 # Function to Fit the Standard NN Using Optim Function:
-fit_standard_network <- function(X_train, Y_train, m1 = 8, m2 = 2, nu = 0,
-                                 maxit = 1000, n_starts = 8, seed = 2026) {
+fit_standard_network <- function(X_train, Y_train, m1 = 8, m2 = 2, nu = 0, maxit = 800, n_starts = 8, seed = 2026) {
   set.seed(seed)
   
   p <- nrow(X_train)
@@ -639,7 +640,7 @@ if (file.exists("NetworkComparisonObjects.RData"))
   fit_standard_bestnu <- fit_standard_network(
     X_train, Y_train,
     m1 = 8, m2 = 2, nu = best_nu,
-    maxit = 800, n_starts = 3, seed = 999)
+    maxit = 800, n_starts = 8, seed = 999)
   
   # Determine Validation Cross Entropy for Each Model:
   split_valid_ce <- forward_split(best_fit_split$par, Xu_valid, Xv_valid, Y_valid, m = 4, nu = best_nu)$ce
