@@ -214,7 +214,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p><img src="A2_Main_Quarto_files/figure-html/EDAPlots-4.png" class="img-fluid" width="672"></p>
 </div>
 </div>
-<p>The exploratory analysis suggests that the relationship between the predictors and the probability of bombing is not purely linear. In particular, the response appears to vary nonlinearly across both Fluid and Carbs, and there may also be interaction-type behaviour between nutritional variables and demographic/performance variables. This provides preliminary motivation for considering a nonlinear classifier such as a neural network. After running the plots, comment specifically on whether the smoothed trends appear curved, whether there are threshold-like regions, and whether separation appears stronger in some predictor combinations than in others.</p>
 </section>
 </section>
 <section id="b" class="level2">
@@ -224,12 +223,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="c">c)</h2>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Definition of Softmax Activation Function for Input Matrix Z:</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>softmax_mat <span class="ot">&lt;-</span> <span class="cf">function</span>(Z) {</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>softmax <span class="ot">&lt;-</span> <span class="cf">function</span>(Z) {</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Calculation of Shifted Matrix by Max Column-Wise Value for Numerical Stability:</span></span>
 <span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  Z_shift <span class="ot">&lt;-</span> <span class="fu">sweep</span>(Z, <span class="dv">2</span>, <span class="fu">apply</span>(Z, <span class="dv">2</span>, max), <span class="at">FUN =</span> <span class="st">"-"</span>)</span>
 <span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Element-Wise Exponentiation of Shifted Matrix:</span></span>
 <span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  exp_Z <span class="ot">&lt;-</span> <span class="fu">exp</span>(Z_shift)</span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Normalisation of Each Column Returning Class Probabilities:</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Normalisation of Each Column, Returning Class Probabilities:</span></span>
 <span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>  exp_Z <span class="sc">/</span> <span class="fu">matrix</span>(<span class="fu">colSums</span>(exp_Z), <span class="at">nrow =</span> <span class="fu">nrow</span>(Z), <span class="at">ncol =</span> <span class="fu">ncol</span>(Z), <span class="at">byrow =</span> <span class="cn">TRUE</span>)</span>
 <span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
@@ -271,144 +270,139 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="feed-forward-objective-function" class="level3">
 <h3 class="anchored" data-anchor-id="feed-forward-objective-function">Feed Forward &amp; Objective Function</h3>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Definition of the Derivative of tanh in Terms of the Activation:</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>tanh_prime_from_act <span class="ot">&lt;-</span> <span class="cf">function</span>(A) {</span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  <span class="dv">1</span> <span class="sc">-</span> A<span class="sc">^</span><span class="dv">2</span></span>
-<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to Unpack Parameter Vector into Split-Brain Network Weights and Biases:</span></span>
-<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>unpack_split_params <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, pu, pv, m, q) {</span>
-<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Index for Position Tracking in Parameter Vector:</span></span>
-<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>  idx <span class="ot">&lt;-</span> <span class="dv">1</span></span>
-<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Helper Function to Extract Next k Parameters from Theta:</span></span>
-<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>  take <span class="ot">&lt;-</span> <span class="cf">function</span>(k) {</span>
-<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>    out <span class="ot">&lt;-</span> theta[idx<span class="sc">:</span>(idx <span class="sc">+</span> k <span class="sc">-</span> <span class="dv">1</span>)]</span>
-<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a>    idx <span class="ot">&lt;&lt;-</span> idx <span class="sc">+</span> k</span>
-<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a>    out</span>
-<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a>  }</span>
-<span id="cb12-18"><a href="#cb12-18" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-19"><a href="#cb12-19" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Extraction of First-Layer Weights and Biases for u-Hemisphere:</span></span>
-<span id="cb12-20"><a href="#cb12-20" aria-hidden="true" tabindex="-1"></a>  W1u <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m <span class="sc">*</span> pu), <span class="at">nrow =</span> m, <span class="at">ncol =</span> pu)</span>
-<span id="cb12-21"><a href="#cb12-21" aria-hidden="true" tabindex="-1"></a>  b1u <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m), <span class="at">nrow =</span> m, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
-<span id="cb12-22"><a href="#cb12-22" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-23"><a href="#cb12-23" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Extraction of First-Layer Weights and Biases for v-Hemisphere:</span></span>
-<span id="cb12-24"><a href="#cb12-24" aria-hidden="true" tabindex="-1"></a>  W1v <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m <span class="sc">*</span> pv), <span class="at">nrow =</span> m, <span class="at">ncol =</span> pv)</span>
-<span id="cb12-25"><a href="#cb12-25" aria-hidden="true" tabindex="-1"></a>  b1v <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m), <span class="at">nrow =</span> m, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
-<span id="cb12-26"><a href="#cb12-26" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-27"><a href="#cb12-27" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Extraction of Second-Layer Weights and Biases for u-Hemisphere:</span></span>
-<span id="cb12-28"><a href="#cb12-28" aria-hidden="true" tabindex="-1"></a>  W2u <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m), <span class="at">nrow =</span> <span class="dv">1</span>, <span class="at">ncol =</span> m)</span>
-<span id="cb12-29"><a href="#cb12-29" aria-hidden="true" tabindex="-1"></a>  b2u <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(<span class="dv">1</span>), <span class="at">nrow =</span> <span class="dv">1</span>, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
-<span id="cb12-30"><a href="#cb12-30" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-31"><a href="#cb12-31" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Extraction of Second-Layer Weights and Biases for v-Hemisphere:</span></span>
-<span id="cb12-32"><a href="#cb12-32" aria-hidden="true" tabindex="-1"></a>  W2v <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m), <span class="at">nrow =</span> <span class="dv">1</span>, <span class="at">ncol =</span> m)</span>
-<span id="cb12-33"><a href="#cb12-33" aria-hidden="true" tabindex="-1"></a>  b2v <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(<span class="dv">1</span>), <span class="at">nrow =</span> <span class="dv">1</span>, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
-<span id="cb12-34"><a href="#cb12-34" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-35"><a href="#cb12-35" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Extraction of Output-Layer Weights and Biases:</span></span>
-<span id="cb12-36"><a href="#cb12-36" aria-hidden="true" tabindex="-1"></a>  W3 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(q <span class="sc">*</span> <span class="dv">2</span>), <span class="at">nrow =</span> q, <span class="at">ncol =</span> <span class="dv">2</span>)</span>
-<span id="cb12-37"><a href="#cb12-37" aria-hidden="true" tabindex="-1"></a>  b3 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(q), <span class="at">nrow =</span> q, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
-<span id="cb12-38"><a href="#cb12-38" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-39"><a href="#cb12-39" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Return All Unpacked Parameters as Named List:</span></span>
-<span id="cb12-40"><a href="#cb12-40" aria-hidden="true" tabindex="-1"></a>  <span class="fu">list</span>(</span>
-<span id="cb12-41"><a href="#cb12-41" aria-hidden="true" tabindex="-1"></a>    <span class="at">W1u =</span> W1u, <span class="at">b1u =</span> b1u,</span>
-<span id="cb12-42"><a href="#cb12-42" aria-hidden="true" tabindex="-1"></a>    <span class="at">W1v =</span> W1v, <span class="at">b1v =</span> b1v,</span>
-<span id="cb12-43"><a href="#cb12-43" aria-hidden="true" tabindex="-1"></a>    <span class="at">W2u =</span> W2u, <span class="at">b2u =</span> b2u,</span>
-<span id="cb12-44"><a href="#cb12-44" aria-hidden="true" tabindex="-1"></a>    <span class="at">W2v =</span> W2v, <span class="at">b2v =</span> b2v,</span>
-<span id="cb12-45"><a href="#cb12-45" aria-hidden="true" tabindex="-1"></a>    <span class="at">W3 =</span> W3, <span class="at">b3 =</span> b3)</span>
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to Unpack Parameter Vector into Split-Brain Network Weights and Biases:</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>unpack_split_params <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, pu, pv, m, q) {</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Index for Position Tracking in Parameter Vector:</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>  idx <span class="ot">&lt;-</span> <span class="dv">1</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Helper Function to Extract Next k Parameters from Theta:</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>  take <span class="ot">&lt;-</span> <span class="cf">function</span>(k) {</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>    out <span class="ot">&lt;-</span> theta[idx<span class="sc">:</span>(idx <span class="sc">+</span> k <span class="sc">-</span> <span class="dv">1</span>)]</span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>    idx <span class="ot">&lt;&lt;-</span> idx <span class="sc">+</span> k</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>    out</span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Extraction of First-Layer Weights and Biases for u-Hemisphere:</span></span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a>  W1u <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m <span class="sc">*</span> pu), <span class="at">nrow =</span> m, <span class="at">ncol =</span> pu)</span>
+<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a>  b1u <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m), <span class="at">nrow =</span> m, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
+<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-18"><a href="#cb12-18" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Extraction of First-Layer Weights and Biases for v-Hemisphere:</span></span>
+<span id="cb12-19"><a href="#cb12-19" aria-hidden="true" tabindex="-1"></a>  W1v <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m <span class="sc">*</span> pv), <span class="at">nrow =</span> m, <span class="at">ncol =</span> pv)</span>
+<span id="cb12-20"><a href="#cb12-20" aria-hidden="true" tabindex="-1"></a>  b1v <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m), <span class="at">nrow =</span> m, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
+<span id="cb12-21"><a href="#cb12-21" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-22"><a href="#cb12-22" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Extraction of Second-Layer Weights and Biases for u-Hemisphere:</span></span>
+<span id="cb12-23"><a href="#cb12-23" aria-hidden="true" tabindex="-1"></a>  W2u <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m), <span class="at">nrow =</span> <span class="dv">1</span>, <span class="at">ncol =</span> m)</span>
+<span id="cb12-24"><a href="#cb12-24" aria-hidden="true" tabindex="-1"></a>  b2u <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(<span class="dv">1</span>), <span class="at">nrow =</span> <span class="dv">1</span>, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
+<span id="cb12-25"><a href="#cb12-25" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-26"><a href="#cb12-26" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Extraction of Second-Layer Weights and Biases for v-Hemisphere:</span></span>
+<span id="cb12-27"><a href="#cb12-27" aria-hidden="true" tabindex="-1"></a>  W2v <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m), <span class="at">nrow =</span> <span class="dv">1</span>, <span class="at">ncol =</span> m)</span>
+<span id="cb12-28"><a href="#cb12-28" aria-hidden="true" tabindex="-1"></a>  b2v <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(<span class="dv">1</span>), <span class="at">nrow =</span> <span class="dv">1</span>, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
+<span id="cb12-29"><a href="#cb12-29" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-30"><a href="#cb12-30" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Extraction of Output-Layer Weights and Biases:</span></span>
+<span id="cb12-31"><a href="#cb12-31" aria-hidden="true" tabindex="-1"></a>  W3 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(q <span class="sc">*</span> <span class="dv">2</span>), <span class="at">nrow =</span> q, <span class="at">ncol =</span> <span class="dv">2</span>)</span>
+<span id="cb12-32"><a href="#cb12-32" aria-hidden="true" tabindex="-1"></a>  b3 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(q), <span class="at">nrow =</span> q, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
+<span id="cb12-33"><a href="#cb12-33" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-34"><a href="#cb12-34" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Return All Unpacked Parameters as Named List:</span></span>
+<span id="cb12-35"><a href="#cb12-35" aria-hidden="true" tabindex="-1"></a>  <span class="fu">list</span>(</span>
+<span id="cb12-36"><a href="#cb12-36" aria-hidden="true" tabindex="-1"></a>    <span class="at">W1u =</span> W1u, <span class="at">b1u =</span> b1u,</span>
+<span id="cb12-37"><a href="#cb12-37" aria-hidden="true" tabindex="-1"></a>    <span class="at">W1v =</span> W1v, <span class="at">b1v =</span> b1v,</span>
+<span id="cb12-38"><a href="#cb12-38" aria-hidden="true" tabindex="-1"></a>    <span class="at">W2u =</span> W2u, <span class="at">b2u =</span> b2u,</span>
+<span id="cb12-39"><a href="#cb12-39" aria-hidden="true" tabindex="-1"></a>    <span class="at">W2v =</span> W2v, <span class="at">b2v =</span> b2v,</span>
+<span id="cb12-40"><a href="#cb12-40" aria-hidden="true" tabindex="-1"></a>    <span class="at">W3 =</span> W3, <span class="at">b3 =</span> b3)</span>
+<span id="cb12-41"><a href="#cb12-41" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb12-42"><a href="#cb12-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-43"><a href="#cb12-43" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to Count Total Number of Parameters in Split-Brain Network:</span></span>
+<span id="cb12-44"><a href="#cb12-44" aria-hidden="true" tabindex="-1"></a>n_params_split <span class="ot">&lt;-</span> <span class="cf">function</span>(pu, pv, m, q) {</span>
+<span id="cb12-45"><a href="#cb12-45" aria-hidden="true" tabindex="-1"></a>  m<span class="sc">*</span>(pu <span class="sc">+</span> pv <span class="sc">+</span> <span class="dv">2</span>) <span class="sc">+</span> <span class="dv">2</span><span class="sc">*</span>q <span class="sc">+</span> <span class="dv">2</span><span class="sc">*</span>m <span class="sc">+</span> <span class="dv">2</span> <span class="sc">+</span> q</span>
 <span id="cb12-46"><a href="#cb12-46" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb12-47"><a href="#cb12-47" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-48"><a href="#cb12-48" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to Count Total Number of Parameters in Split-Brain Network:</span></span>
-<span id="cb12-49"><a href="#cb12-49" aria-hidden="true" tabindex="-1"></a>n_params_split <span class="ot">&lt;-</span> <span class="cf">function</span>(pu, pv, m, q) {</span>
-<span id="cb12-50"><a href="#cb12-50" aria-hidden="true" tabindex="-1"></a>  m<span class="sc">*</span>(pu <span class="sc">+</span> pv <span class="sc">+</span> <span class="dv">2</span>) <span class="sc">+</span> <span class="dv">2</span><span class="sc">*</span>q <span class="sc">+</span> <span class="dv">2</span><span class="sc">*</span>m <span class="sc">+</span> <span class="dv">2</span> <span class="sc">+</span> q</span>
+<span id="cb12-48"><a href="#cb12-48" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to Randomly Initialise Split-Brain Network Parameters:</span></span>
+<span id="cb12-49"><a href="#cb12-49" aria-hidden="true" tabindex="-1"></a>init_split_params <span class="ot">&lt;-</span> <span class="cf">function</span>(pu, pv, m, q, <span class="at">sd =</span> <span class="fl">0.1</span>) {</span>
+<span id="cb12-50"><a href="#cb12-50" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rnorm</span>(<span class="fu">n_params_split</span>(pu, pv, m, q), <span class="at">mean =</span> <span class="dv">0</span>, <span class="at">sd =</span> sd)</span>
 <span id="cb12-51"><a href="#cb12-51" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb12-52"><a href="#cb12-52" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-53"><a href="#cb12-53" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to Randomly Initialise Split-Brain Network Parameters:</span></span>
-<span id="cb12-54"><a href="#cb12-54" aria-hidden="true" tabindex="-1"></a>init_split_params <span class="ot">&lt;-</span> <span class="cf">function</span>(pu, pv, m, q, <span class="at">sd =</span> <span class="fl">0.1</span>) {</span>
-<span id="cb12-55"><a href="#cb12-55" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rnorm</span>(<span class="fu">n_params_split</span>(pu, pv, m, q), <span class="at">mean =</span> <span class="dv">0</span>, <span class="at">sd =</span> sd)</span>
-<span id="cb12-56"><a href="#cb12-56" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb12-57"><a href="#cb12-57" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-58"><a href="#cb12-58" aria-hidden="true" tabindex="-1"></a><span class="co"># Feed-Forward Function for Split-Brain Network with Objective Function Evaluation:</span></span>
-<span id="cb12-59"><a href="#cb12-59" aria-hidden="true" tabindex="-1"></a>forward_split <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, Xu, Xv, <span class="at">Y =</span> <span class="cn">NULL</span>, <span class="at">m =</span> <span class="dv">4</span>, <span class="at">nu =</span> <span class="dv">0</span>) {</span>
-<span id="cb12-60"><a href="#cb12-60" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-61"><a href="#cb12-61" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Extraction of Input and Output Dimensions from Supplied Matrices:</span></span>
-<span id="cb12-62"><a href="#cb12-62" aria-hidden="true" tabindex="-1"></a>  pu <span class="ot">&lt;-</span> <span class="fu">nrow</span>(Xu)</span>
-<span id="cb12-63"><a href="#cb12-63" aria-hidden="true" tabindex="-1"></a>  pv <span class="ot">&lt;-</span> <span class="fu">nrow</span>(Xv)</span>
-<span id="cb12-64"><a href="#cb12-64" aria-hidden="true" tabindex="-1"></a>  q  <span class="ot">&lt;-</span> <span class="dv">2</span></span>
-<span id="cb12-65"><a href="#cb12-65" aria-hidden="true" tabindex="-1"></a>  N  <span class="ot">&lt;-</span> <span class="fu">ncol</span>(Xu)</span>
-<span id="cb12-66"><a href="#cb12-66" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-67"><a href="#cb12-67" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Unpacking Parameter Vector into Structured Weight and Bias Matrices:</span></span>
-<span id="cb12-68"><a href="#cb12-68" aria-hidden="true" tabindex="-1"></a>  pars <span class="ot">&lt;-</span> <span class="fu">unpack_split_params</span>(theta, pu, pv, m, q)</span>
-<span id="cb12-69"><a href="#cb12-69" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-70"><a href="#cb12-70" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Creation of Row Vector of Ones to "Broadcast" Bias Terms Across Observations:</span></span>
-<span id="cb12-71"><a href="#cb12-71" aria-hidden="true" tabindex="-1"></a>  oneN <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">1</span>, <span class="at">nrow =</span> <span class="dv">1</span>, <span class="at">ncol =</span> N)</span>
-<span id="cb12-72"><a href="#cb12-72" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-73"><a href="#cb12-73" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Computation of First Hidden-Layer Linear Combinations &amp; Activations for u-Hemisphere &amp; v-Hemisphere:</span></span>
-<span id="cb12-74"><a href="#cb12-74" aria-hidden="true" tabindex="-1"></a>  Z1u <span class="ot">&lt;-</span> pars<span class="sc">$</span>W1u <span class="sc">%*%</span> Xu <span class="sc">+</span> pars<span class="sc">$</span>b1u <span class="sc">%*%</span> oneN</span>
-<span id="cb12-75"><a href="#cb12-75" aria-hidden="true" tabindex="-1"></a>  A1u <span class="ot">&lt;-</span> <span class="fu">tanh</span>(Z1u)</span>
-<span id="cb12-76"><a href="#cb12-76" aria-hidden="true" tabindex="-1"></a>  Z1v <span class="ot">&lt;-</span> pars<span class="sc">$</span>W1v <span class="sc">%*%</span> Xv <span class="sc">+</span> pars<span class="sc">$</span>b1v <span class="sc">%*%</span> oneN</span>
-<span id="cb12-77"><a href="#cb12-77" aria-hidden="true" tabindex="-1"></a>  A1v <span class="ot">&lt;-</span> <span class="fu">tanh</span>(Z1v)</span>
-<span id="cb12-78"><a href="#cb12-78" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-79"><a href="#cb12-79" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Computation of Second Hidden-Layer Linear Combinations &amp; Activation for u-Hemisphere &amp; v-Hemisphere:</span></span>
-<span id="cb12-80"><a href="#cb12-80" aria-hidden="true" tabindex="-1"></a>  Z2u <span class="ot">&lt;-</span> pars<span class="sc">$</span>W2u <span class="sc">%*%</span> A1u <span class="sc">+</span> pars<span class="sc">$</span>b2u <span class="sc">%*%</span> oneN</span>
-<span id="cb12-81"><a href="#cb12-81" aria-hidden="true" tabindex="-1"></a>  A2u <span class="ot">&lt;-</span> <span class="fu">tanh</span>(Z2u)</span>
-<span id="cb12-82"><a href="#cb12-82" aria-hidden="true" tabindex="-1"></a>  Z2v <span class="ot">&lt;-</span> pars<span class="sc">$</span>W2v <span class="sc">%*%</span> A1v <span class="sc">+</span> pars<span class="sc">$</span>b2v <span class="sc">%*%</span> oneN</span>
-<span id="cb12-83"><a href="#cb12-83" aria-hidden="true" tabindex="-1"></a>  A2v <span class="ot">&lt;-</span> <span class="fu">tanh</span>(Z2v)</span>
-<span id="cb12-84"><a href="#cb12-84" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-85"><a href="#cb12-85" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Row Binding the Two Hemisphere Activations for Input to Output Layer:</span></span>
-<span id="cb12-86"><a href="#cb12-86" aria-hidden="true" tabindex="-1"></a>  A2 <span class="ot">&lt;-</span> <span class="fu">rbind</span>(A2u, A2v)</span>
-<span id="cb12-87"><a href="#cb12-87" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-88"><a href="#cb12-88" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Computation of Output-Layer Linear Combinations and Softmax Probabilities:</span></span>
-<span id="cb12-89"><a href="#cb12-89" aria-hidden="true" tabindex="-1"></a>  Z3 <span class="ot">&lt;-</span> pars<span class="sc">$</span>W3 <span class="sc">%*%</span> A2 <span class="sc">+</span> pars<span class="sc">$</span>b3 <span class="sc">%*%</span> oneN</span>
-<span id="cb12-90"><a href="#cb12-90" aria-hidden="true" tabindex="-1"></a>  P  <span class="ot">&lt;-</span> <span class="fu">softmax_mat</span>(Z3)</span>
-<span id="cb12-91"><a href="#cb12-91" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-92"><a href="#cb12-92" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Storage of Feed Forward Outputs in a List:</span></span>
-<span id="cb12-93"><a href="#cb12-93" aria-hidden="true" tabindex="-1"></a>  out <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
-<span id="cb12-94"><a href="#cb12-94" aria-hidden="true" tabindex="-1"></a>    <span class="at">P =</span> P,</span>
-<span id="cb12-95"><a href="#cb12-95" aria-hidden="true" tabindex="-1"></a>    <span class="at">Z1u =</span> Z1u, <span class="at">A1u =</span> A1u,</span>
-<span id="cb12-96"><a href="#cb12-96" aria-hidden="true" tabindex="-1"></a>    <span class="at">Z1v =</span> Z1v, <span class="at">A1v =</span> A1v,</span>
-<span id="cb12-97"><a href="#cb12-97" aria-hidden="true" tabindex="-1"></a>    <span class="at">Z2u =</span> Z2u, <span class="at">A2u =</span> A2u,</span>
-<span id="cb12-98"><a href="#cb12-98" aria-hidden="true" tabindex="-1"></a>    <span class="at">Z2v =</span> Z2v, <span class="at">A2v =</span> A2v,</span>
-<span id="cb12-99"><a href="#cb12-99" aria-hidden="true" tabindex="-1"></a>    <span class="at">Z3 =</span> Z3)</span>
-<span id="cb12-100"><a href="#cb12-100" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-101"><a href="#cb12-101" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Check for Response Matrix so that Objective Function can be Evaluated:</span></span>
-<span id="cb12-102"><a href="#cb12-102" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(Y)) {</span>
-<span id="cb12-103"><a href="#cb12-103" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-104"><a href="#cb12-104" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Definition of Small Constant to Avoid log(0):</span></span>
-<span id="cb12-105"><a href="#cb12-105" aria-hidden="true" tabindex="-1"></a>    eps <span class="ot">&lt;-</span> <span class="fl">1e-12</span></span>
-<span id="cb12-106"><a href="#cb12-106" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-107"><a href="#cb12-107" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Computation of Cross-Entropy Component of the Objective Function</span></span>
-<span id="cb12-108"><a href="#cb12-108" aria-hidden="true" tabindex="-1"></a>    ce <span class="ot">&lt;-</span> <span class="sc">-</span><span class="fu">mean</span>(<span class="fu">colSums</span>(Y <span class="sc">*</span> <span class="fu">log</span>(P <span class="sc">+</span> eps)))</span>
-<span id="cb12-109"><a href="#cb12-109" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb12-110"><a href="#cb12-110" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Computation of L2 Regularisation Penalty on Weight Matrices Component:</span></span>
-<span id="cb12-111"><a href="#cb12-111" aria-hidden="true" tabindex="-1"></a>    reg <span class="ot">&lt;-</span> (nu <span class="sc">/</span> <span class="dv">2</span>) <span class="sc">*</span> (</span>
-<span id="cb12-112"><a href="#cb12-112" aria-hidden="true" tabindex="-1"></a>      <span class="fu">sum</span>(pars<span class="sc">$</span>W1u<span class="sc">^</span><span class="dv">2</span>) <span class="sc">+</span> <span class="fu">sum</span>(pars<span class="sc">$</span>W1v<span class="sc">^</span><span class="dv">2</span>) <span class="sc">+</span></span>
-<span id="cb12-113"><a href="#cb12-113" aria-hidden="true" tabindex="-1"></a>      <span class="fu">sum</span>(pars<span class="sc">$</span>W2u<span class="sc">^</span><span class="dv">2</span>) <span class="sc">+</span> <span class="fu">sum</span>(pars<span class="sc">$</span>W2v<span class="sc">^</span><span class="dv">2</span>) <span class="sc">+</span></span>
-<span id="cb12-114"><a href="#cb12-114" aria-hidden="true" tabindex="-1"></a>      <span class="fu">sum</span>(pars<span class="sc">$</span>W3<span class="sc">^</span><span class="dv">2</span>))</span>
-<span id="cb12-115"><a href="#cb12-115" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb12-116"><a href="#cb12-116" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Storage of Total Objective Function &amp; Spearate Compenents:</span></span>
-<span id="cb12-117"><a href="#cb12-117" aria-hidden="true" tabindex="-1"></a>    out<span class="sc">$</span>loss <span class="ot">&lt;-</span> ce <span class="sc">+</span> reg</span>
-<span id="cb12-118"><a href="#cb12-118" aria-hidden="true" tabindex="-1"></a>    out<span class="sc">$</span>ce   <span class="ot">&lt;-</span> ce</span>
-<span id="cb12-119"><a href="#cb12-119" aria-hidden="true" tabindex="-1"></a>    out<span class="sc">$</span>reg  <span class="ot">&lt;-</span> reg</span>
-<span id="cb12-120"><a href="#cb12-120" aria-hidden="true" tabindex="-1"></a>  }</span>
-<span id="cb12-121"><a href="#cb12-121" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb12-122"><a href="#cb12-122" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Return of Feed-Forward Results:</span></span>
-<span id="cb12-123"><a href="#cb12-123" aria-hidden="true" tabindex="-1"></a>  out</span>
-<span id="cb12-124"><a href="#cb12-124" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb12-125"><a href="#cb12-125" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-126"><a href="#cb12-126" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to Convert Predicted Probabilities Into Class Predictions:</span></span>
-<span id="cb12-127"><a href="#cb12-127" aria-hidden="true" tabindex="-1"></a>predict_split_class <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, Xu, Xv, <span class="at">m =</span> <span class="dv">4</span>) {</span>
-<span id="cb12-128"><a href="#cb12-128" aria-hidden="true" tabindex="-1"></a>  P <span class="ot">&lt;-</span> <span class="fu">forward_split</span>(theta, Xu, Xv, <span class="at">m =</span> m)<span class="sc">$</span>P</span>
-<span id="cb12-129"><a href="#cb12-129" aria-hidden="true" tabindex="-1"></a>  <span class="fu">max.col</span>(<span class="fu">t</span>(P)) <span class="sc">-</span> <span class="dv">1</span></span>
-<span id="cb12-130"><a href="#cb12-130" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb12-131"><a href="#cb12-131" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-132"><a href="#cb12-132" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to Compute Misclassification Rate:</span></span>
-<span id="cb12-133"><a href="#cb12-133" aria-hidden="true" tabindex="-1"></a>misclass_rate <span class="ot">&lt;-</span> <span class="cf">function</span>(pred_class, Y) {</span>
-<span id="cb12-134"><a href="#cb12-134" aria-hidden="true" tabindex="-1"></a>  truth <span class="ot">&lt;-</span> <span class="fu">max.col</span>(<span class="fu">t</span>(Y)) <span class="sc">-</span> <span class="dv">1</span></span>
-<span id="cb12-135"><a href="#cb12-135" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mean</span>(pred_class <span class="sc">!=</span> truth)</span>
-<span id="cb12-136"><a href="#cb12-136" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb12-53"><a href="#cb12-53" aria-hidden="true" tabindex="-1"></a><span class="co"># Feed-Forward Function for Split-Brain Network with Objective Function Evaluation:</span></span>
+<span id="cb12-54"><a href="#cb12-54" aria-hidden="true" tabindex="-1"></a>forward_split <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, Xu, Xv, <span class="at">Y =</span> <span class="cn">NULL</span>, <span class="at">m =</span> <span class="dv">4</span>, <span class="at">nu =</span> <span class="dv">0</span>) {</span>
+<span id="cb12-55"><a href="#cb12-55" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-56"><a href="#cb12-56" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Extraction of Input and Output Dimensions from Supplied Matrices:</span></span>
+<span id="cb12-57"><a href="#cb12-57" aria-hidden="true" tabindex="-1"></a>  pu <span class="ot">&lt;-</span> <span class="fu">nrow</span>(Xu)</span>
+<span id="cb12-58"><a href="#cb12-58" aria-hidden="true" tabindex="-1"></a>  pv <span class="ot">&lt;-</span> <span class="fu">nrow</span>(Xv)</span>
+<span id="cb12-59"><a href="#cb12-59" aria-hidden="true" tabindex="-1"></a>  q  <span class="ot">&lt;-</span> <span class="dv">2</span></span>
+<span id="cb12-60"><a href="#cb12-60" aria-hidden="true" tabindex="-1"></a>  N  <span class="ot">&lt;-</span> <span class="fu">ncol</span>(Xu)</span>
+<span id="cb12-61"><a href="#cb12-61" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-62"><a href="#cb12-62" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Unpacking Parameter Vector into Structured Weight and Bias Matrices:</span></span>
+<span id="cb12-63"><a href="#cb12-63" aria-hidden="true" tabindex="-1"></a>  pars <span class="ot">&lt;-</span> <span class="fu">unpack_split_params</span>(theta, pu, pv, m, q)</span>
+<span id="cb12-64"><a href="#cb12-64" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-65"><a href="#cb12-65" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Creation of Row Vector of Ones to "Broadcast" Bias Terms Across Observations:</span></span>
+<span id="cb12-66"><a href="#cb12-66" aria-hidden="true" tabindex="-1"></a>  oneN <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">1</span>, <span class="at">nrow =</span> <span class="dv">1</span>, <span class="at">ncol =</span> N)</span>
+<span id="cb12-67"><a href="#cb12-67" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-68"><a href="#cb12-68" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Computation of First Hidden-Layer Linear Combinations &amp; Activations for u-Hemisphere &amp; v-Hemisphere:</span></span>
+<span id="cb12-69"><a href="#cb12-69" aria-hidden="true" tabindex="-1"></a>  Z1u <span class="ot">&lt;-</span> pars<span class="sc">$</span>W1u <span class="sc">%*%</span> Xu <span class="sc">+</span> pars<span class="sc">$</span>b1u <span class="sc">%*%</span> oneN</span>
+<span id="cb12-70"><a href="#cb12-70" aria-hidden="true" tabindex="-1"></a>  A1u <span class="ot">&lt;-</span> <span class="fu">tanh</span>(Z1u)</span>
+<span id="cb12-71"><a href="#cb12-71" aria-hidden="true" tabindex="-1"></a>  Z1v <span class="ot">&lt;-</span> pars<span class="sc">$</span>W1v <span class="sc">%*%</span> Xv <span class="sc">+</span> pars<span class="sc">$</span>b1v <span class="sc">%*%</span> oneN</span>
+<span id="cb12-72"><a href="#cb12-72" aria-hidden="true" tabindex="-1"></a>  A1v <span class="ot">&lt;-</span> <span class="fu">tanh</span>(Z1v)</span>
+<span id="cb12-73"><a href="#cb12-73" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-74"><a href="#cb12-74" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Computation of Second Hidden-Layer Linear Combinations &amp; Activation for u-Hemisphere &amp; v-Hemisphere:</span></span>
+<span id="cb12-75"><a href="#cb12-75" aria-hidden="true" tabindex="-1"></a>  Z2u <span class="ot">&lt;-</span> pars<span class="sc">$</span>W2u <span class="sc">%*%</span> A1u <span class="sc">+</span> pars<span class="sc">$</span>b2u <span class="sc">%*%</span> oneN</span>
+<span id="cb12-76"><a href="#cb12-76" aria-hidden="true" tabindex="-1"></a>  A2u <span class="ot">&lt;-</span> <span class="fu">tanh</span>(Z2u)</span>
+<span id="cb12-77"><a href="#cb12-77" aria-hidden="true" tabindex="-1"></a>  Z2v <span class="ot">&lt;-</span> pars<span class="sc">$</span>W2v <span class="sc">%*%</span> A1v <span class="sc">+</span> pars<span class="sc">$</span>b2v <span class="sc">%*%</span> oneN</span>
+<span id="cb12-78"><a href="#cb12-78" aria-hidden="true" tabindex="-1"></a>  A2v <span class="ot">&lt;-</span> <span class="fu">tanh</span>(Z2v)</span>
+<span id="cb12-79"><a href="#cb12-79" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-80"><a href="#cb12-80" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Row Binding the Two Hemisphere Activations for Input to Output Layer:</span></span>
+<span id="cb12-81"><a href="#cb12-81" aria-hidden="true" tabindex="-1"></a>  A2 <span class="ot">&lt;-</span> <span class="fu">rbind</span>(A2u, A2v)</span>
+<span id="cb12-82"><a href="#cb12-82" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-83"><a href="#cb12-83" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Computation of Output-Layer Linear Combinations and Softmax Probabilities:</span></span>
+<span id="cb12-84"><a href="#cb12-84" aria-hidden="true" tabindex="-1"></a>  Z3 <span class="ot">&lt;-</span> pars<span class="sc">$</span>W3 <span class="sc">%*%</span> A2 <span class="sc">+</span> pars<span class="sc">$</span>b3 <span class="sc">%*%</span> oneN</span>
+<span id="cb12-85"><a href="#cb12-85" aria-hidden="true" tabindex="-1"></a>  P  <span class="ot">&lt;-</span> <span class="fu">softmax</span>(Z3)</span>
+<span id="cb12-86"><a href="#cb12-86" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-87"><a href="#cb12-87" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Storage of Feed Forward Outputs in a List:</span></span>
+<span id="cb12-88"><a href="#cb12-88" aria-hidden="true" tabindex="-1"></a>  out <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb12-89"><a href="#cb12-89" aria-hidden="true" tabindex="-1"></a>    <span class="at">P =</span> P,</span>
+<span id="cb12-90"><a href="#cb12-90" aria-hidden="true" tabindex="-1"></a>    <span class="at">Z1u =</span> Z1u, <span class="at">A1u =</span> A1u,</span>
+<span id="cb12-91"><a href="#cb12-91" aria-hidden="true" tabindex="-1"></a>    <span class="at">Z1v =</span> Z1v, <span class="at">A1v =</span> A1v,</span>
+<span id="cb12-92"><a href="#cb12-92" aria-hidden="true" tabindex="-1"></a>    <span class="at">Z2u =</span> Z2u, <span class="at">A2u =</span> A2u,</span>
+<span id="cb12-93"><a href="#cb12-93" aria-hidden="true" tabindex="-1"></a>    <span class="at">Z2v =</span> Z2v, <span class="at">A2v =</span> A2v,</span>
+<span id="cb12-94"><a href="#cb12-94" aria-hidden="true" tabindex="-1"></a>    <span class="at">Z3 =</span> Z3)</span>
+<span id="cb12-95"><a href="#cb12-95" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-96"><a href="#cb12-96" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Check for Response Matrix so that Objective Function can be Evaluated:</span></span>
+<span id="cb12-97"><a href="#cb12-97" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(Y)) {</span>
+<span id="cb12-98"><a href="#cb12-98" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-99"><a href="#cb12-99" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Definition of Small Constant to Avoid log(0):</span></span>
+<span id="cb12-100"><a href="#cb12-100" aria-hidden="true" tabindex="-1"></a>    eps <span class="ot">&lt;-</span> <span class="fl">1e-12</span></span>
+<span id="cb12-101"><a href="#cb12-101" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-102"><a href="#cb12-102" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Computation of Cross-Entropy Component of the Objective Function</span></span>
+<span id="cb12-103"><a href="#cb12-103" aria-hidden="true" tabindex="-1"></a>    ce <span class="ot">&lt;-</span> <span class="sc">-</span><span class="fu">mean</span>(<span class="fu">colSums</span>(Y <span class="sc">*</span> <span class="fu">log</span>(P <span class="sc">+</span> eps)))</span>
+<span id="cb12-104"><a href="#cb12-104" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb12-105"><a href="#cb12-105" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Computation of L2 Regularisation Penalty on Weight Matrices Component:</span></span>
+<span id="cb12-106"><a href="#cb12-106" aria-hidden="true" tabindex="-1"></a>    reg <span class="ot">&lt;-</span> (nu <span class="sc">/</span> <span class="dv">2</span>) <span class="sc">*</span> (</span>
+<span id="cb12-107"><a href="#cb12-107" aria-hidden="true" tabindex="-1"></a>      <span class="fu">sum</span>(pars<span class="sc">$</span>W1u<span class="sc">^</span><span class="dv">2</span>) <span class="sc">+</span> <span class="fu">sum</span>(pars<span class="sc">$</span>W1v<span class="sc">^</span><span class="dv">2</span>) <span class="sc">+</span></span>
+<span id="cb12-108"><a href="#cb12-108" aria-hidden="true" tabindex="-1"></a>      <span class="fu">sum</span>(pars<span class="sc">$</span>W2u<span class="sc">^</span><span class="dv">2</span>) <span class="sc">+</span> <span class="fu">sum</span>(pars<span class="sc">$</span>W2v<span class="sc">^</span><span class="dv">2</span>) <span class="sc">+</span></span>
+<span id="cb12-109"><a href="#cb12-109" aria-hidden="true" tabindex="-1"></a>      <span class="fu">sum</span>(pars<span class="sc">$</span>W3<span class="sc">^</span><span class="dv">2</span>))</span>
+<span id="cb12-110"><a href="#cb12-110" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb12-111"><a href="#cb12-111" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Storage of Total Objective Function &amp; Spearate Compenents:</span></span>
+<span id="cb12-112"><a href="#cb12-112" aria-hidden="true" tabindex="-1"></a>    out<span class="sc">$</span>loss <span class="ot">&lt;-</span> ce <span class="sc">+</span> reg</span>
+<span id="cb12-113"><a href="#cb12-113" aria-hidden="true" tabindex="-1"></a>    out<span class="sc">$</span>ce   <span class="ot">&lt;-</span> ce</span>
+<span id="cb12-114"><a href="#cb12-114" aria-hidden="true" tabindex="-1"></a>    out<span class="sc">$</span>reg  <span class="ot">&lt;-</span> reg</span>
+<span id="cb12-115"><a href="#cb12-115" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb12-116"><a href="#cb12-116" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-117"><a href="#cb12-117" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Return of Feed-Forward Results:</span></span>
+<span id="cb12-118"><a href="#cb12-118" aria-hidden="true" tabindex="-1"></a>  out</span>
+<span id="cb12-119"><a href="#cb12-119" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb12-120"><a href="#cb12-120" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-121"><a href="#cb12-121" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to Convert Predicted Probabilities Into Class Predictions:</span></span>
+<span id="cb12-122"><a href="#cb12-122" aria-hidden="true" tabindex="-1"></a>predict_split_class <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, Xu, Xv, <span class="at">m =</span> <span class="dv">4</span>) {</span>
+<span id="cb12-123"><a href="#cb12-123" aria-hidden="true" tabindex="-1"></a>  P <span class="ot">&lt;-</span> <span class="fu">forward_split</span>(theta, Xu, Xv, <span class="at">m =</span> m)<span class="sc">$</span>P</span>
+<span id="cb12-124"><a href="#cb12-124" aria-hidden="true" tabindex="-1"></a>  <span class="fu">max.col</span>(<span class="fu">t</span>(P)) <span class="sc">-</span> <span class="dv">1</span></span>
+<span id="cb12-125"><a href="#cb12-125" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb12-126"><a href="#cb12-126" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-127"><a href="#cb12-127" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to Compute Misclassification Rate:</span></span>
+<span id="cb12-128"><a href="#cb12-128" aria-hidden="true" tabindex="-1"></a>misclass_rate <span class="ot">&lt;-</span> <span class="cf">function</span>(pred_class, Y) {</span>
+<span id="cb12-129"><a href="#cb12-129" aria-hidden="true" tabindex="-1"></a>  truth <span class="ot">&lt;-</span> <span class="fu">max.col</span>(<span class="fu">t</span>(Y)) <span class="sc">-</span> <span class="dv">1</span></span>
+<span id="cb12-130"><a href="#cb12-130" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mean</span>(pred_class <span class="sc">!=</span> truth)</span>
+<span id="cb12-131"><a href="#cb12-131" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>Fitting Wrapper (OPTIONAL):</p>
+<p>Fitting Wrapper:</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>fit_split_network <span class="ot">&lt;-</span> <span class="cf">function</span>(Xu_train, Xv_train, Y_train, <span class="at">m =</span> <span class="dv">4</span>, <span class="at">nu =</span> <span class="dv">0</span>,</span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>                              <span class="at">maxit =</span> <span class="dv">1000</span>, <span class="at">n_starts =</span> <span class="dv">3</span>, <span class="at">seed =</span> <span class="dv">2026</span>) {</span>
@@ -440,7 +434,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb13-28"><a href="#cb13-28" aria-hidden="true" tabindex="-1"></a>  best_fit</span>
 <span id="cb13-29"><a href="#cb13-29" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>The forward pass was implemented explicitly for the split-brain architecture described in the assignment. Hyperbolic tangent activation functions were used on all hidden nodes, while the output layer used a two-class softmax activation. Since the response is binary and the network outputs class probabilities, the natural objective function is the multinomial cross-entropy loss. To control model complexity, an L2 penalty was added on the weight matrices, with regularisation level denoted by v. Bias terms were left unpenalised.</p>
+<p>Since the response is binary and the network outputs class probabilities, the chosen objective function is the multinomial cross-entropy loss. To control model complexity, an L2 penalty was added on the weight matrices, with regularisation level denoted by v. Bias terms were left unpenalised.</p>
 </section>
 </section>
 <section id="h" class="level2">
@@ -479,53 +473,52 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">load</span>(<span class="st">"ValidationLoopResults.Rdata"</span>)</span>
 <span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> </span>
 <span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>  <span class="co">#Create a data frame to store the different results for each nu:</span></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>  <span class="co">#cCreate a Data Frame to store the different results for each nu:</span></span>
 <span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>  val_results <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
 <span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">nu =</span> nu_grid,</span>
 <span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">train_loss =</span> <span class="cn">NA_real_</span>, <span class="co">#Training loss (penalised objective). </span></span>
 <span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">train_ce =</span> <span class="cn">NA_real_</span>, <span class="co">#Training cross-entropy. </span></span>
 <span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">valid_ce =</span> <span class="cn">NA_real_</span>, <span class="co">#Validation cross-entropy. </span></span>
 <span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">train_err =</span> <span class="cn">NA_real_</span>, <span class="co">#Training misclassification error. </span></span>
-<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">valid_err =</span> <span class="cn">NA_real_</span> <span class="co">#Validation misclassification error. </span></span>
-<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">valid_err =</span> <span class="cn">NA_real_</span> <span class="co">#Validation misclassification error.</span></span>
+<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a>    )</span>
 <span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a>  <span class="co">#Store fitted models for each nu:</span></span>
+<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Store Fitted Models for Each Nu:</span></span>
 <span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a>  split_fits <span class="ot">&lt;-</span> <span class="fu">vector</span>(<span class="st">"list"</span>, <span class="fu">length</span>(nu_grid))</span>
 <span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a>  <span class="co">#Loop over our nu grid:</span></span>
+<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Loop Over Our Nu Grid:</span></span>
 <span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (i <span class="cf">in</span> <span class="fu">seq_along</span>(nu_grid)) {</span>
 <span id="cb15-25"><a href="#cb15-25" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb15-26"><a href="#cb15-26" aria-hidden="true" tabindex="-1"></a>    <span class="co">#Fit the split-brain network to the current nu value:</span></span>
+<span id="cb15-26"><a href="#cb15-26" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Fit the Split-Brain Network Using the Current Nu Value:</span></span>
 <span id="cb15-27"><a href="#cb15-27" aria-hidden="true" tabindex="-1"></a>    fit_i <span class="ot">&lt;-</span> <span class="fu">fit_split_network</span>(</span>
 <span id="cb15-28"><a href="#cb15-28" aria-hidden="true" tabindex="-1"></a>      Xu_train, Xv_train, Y_train,</span>
 <span id="cb15-29"><a href="#cb15-29" aria-hidden="true" tabindex="-1"></a>      <span class="at">m =</span> <span class="dv">4</span>, <span class="at">nu =</span> nu_grid[i],</span>
-<span id="cb15-30"><a href="#cb15-30" aria-hidden="true" tabindex="-1"></a>      <span class="at">maxit =</span> <span class="dv">800</span>, <span class="at">n_starts =</span> <span class="dv">8</span>, <span class="at">seed =</span> <span class="dv">2026</span> <span class="sc">+</span> i</span>
-<span id="cb15-31"><a href="#cb15-31" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb15-32"><a href="#cb15-32" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb15-33"><a href="#cb15-33" aria-hidden="true" tabindex="-1"></a>    <span class="co">#Store the model:</span></span>
-<span id="cb15-34"><a href="#cb15-34" aria-hidden="true" tabindex="-1"></a>    split_fits[[i]] <span class="ot">&lt;-</span> fit_i</span>
-<span id="cb15-35"><a href="#cb15-35" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb15-36"><a href="#cb15-36" aria-hidden="true" tabindex="-1"></a>    <span class="co">#Evaluate the model performance on the training and validation sets:</span></span>
-<span id="cb15-37"><a href="#cb15-37" aria-hidden="true" tabindex="-1"></a>    tr_eval <span class="ot">&lt;-</span> <span class="fu">forward_split</span>(fit_i<span class="sc">$</span>par, Xu_train, Xv_train, Y_train, <span class="at">m =</span> <span class="dv">4</span>, <span class="at">nu =</span> nu_grid[i])</span>
-<span id="cb15-38"><a href="#cb15-38" aria-hidden="true" tabindex="-1"></a>    va_eval <span class="ot">&lt;-</span> <span class="fu">forward_split</span>(fit_i<span class="sc">$</span>par, Xu_valid, Xv_valid, Y_valid, <span class="at">m =</span> <span class="dv">4</span>, <span class="at">nu =</span> nu_grid[i])</span>
-<span id="cb15-39"><a href="#cb15-39" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb15-40"><a href="#cb15-40" aria-hidden="true" tabindex="-1"></a>    <span class="co">#Make predicted class labels for training and validation sets:</span></span>
-<span id="cb15-41"><a href="#cb15-41" aria-hidden="true" tabindex="-1"></a>    tr_pred <span class="ot">&lt;-</span> <span class="fu">predict_split_class</span>(fit_i<span class="sc">$</span>par, Xu_train, Xv_train, <span class="at">m =</span> <span class="dv">4</span>)</span>
-<span id="cb15-42"><a href="#cb15-42" aria-hidden="true" tabindex="-1"></a>    va_pred <span class="ot">&lt;-</span> <span class="fu">predict_split_class</span>(fit_i<span class="sc">$</span>par, Xu_valid, Xv_valid, <span class="at">m =</span> <span class="dv">4</span>)</span>
-<span id="cb15-43"><a href="#cb15-43" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb15-44"><a href="#cb15-44" aria-hidden="true" tabindex="-1"></a>    <span class="co">#Store the results:</span></span>
-<span id="cb15-45"><a href="#cb15-45" aria-hidden="true" tabindex="-1"></a>    val_results<span class="sc">$</span>train_loss[i] <span class="ot">&lt;-</span> tr_eval<span class="sc">$</span>loss  <span class="co">#Training loss (penalised objective). </span></span>
-<span id="cb15-46"><a href="#cb15-46" aria-hidden="true" tabindex="-1"></a>    val_results<span class="sc">$</span>train_ce[i]   <span class="ot">&lt;-</span> tr_eval<span class="sc">$</span>ce  <span class="co">#Training cross-entropy.  </span></span>
-<span id="cb15-47"><a href="#cb15-47" aria-hidden="true" tabindex="-1"></a>    val_results<span class="sc">$</span>valid_ce[i]   <span class="ot">&lt;-</span> va_eval<span class="sc">$</span>ce  <span class="co">#Validation cross-entropy.</span></span>
-<span id="cb15-48"><a href="#cb15-48" aria-hidden="true" tabindex="-1"></a>    val_results<span class="sc">$</span>train_err[i]  <span class="ot">&lt;-</span> <span class="fu">misclass_rate</span>(tr_pred, Y_train)  <span class="co">#Training misclassification error. </span></span>
-<span id="cb15-49"><a href="#cb15-49" aria-hidden="true" tabindex="-1"></a>    val_results<span class="sc">$</span>valid_err[i]  <span class="ot">&lt;-</span> <span class="fu">misclass_rate</span>(va_pred, Y_valid)  <span class="co">#Validation misclassification error. </span></span>
-<span id="cb15-50"><a href="#cb15-50" aria-hidden="true" tabindex="-1"></a>  }</span>
-<span id="cb15-51"><a href="#cb15-51" aria-hidden="true" tabindex="-1"></a>  <span class="co">#Save the results for future use:</span></span>
-<span id="cb15-52"><a href="#cb15-52" aria-hidden="true" tabindex="-1"></a>  <span class="fu">save</span>(val_results, split_fits, <span class="at">file =</span> <span class="st">"ValidationLoopResults.Rdata"</span>)</span>
-<span id="cb15-53"><a href="#cb15-53" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb15-54"><a href="#cb15-54" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-55"><a href="#cb15-55" aria-hidden="true" tabindex="-1"></a><span class="co">#Display the results</span></span>
-<span id="cb15-56"><a href="#cb15-56" aria-hidden="true" tabindex="-1"></a>val_results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb15-30"><a href="#cb15-30" aria-hidden="true" tabindex="-1"></a>      <span class="at">maxit =</span> <span class="dv">800</span>, <span class="at">n_starts =</span> <span class="dv">8</span>, <span class="at">seed =</span> <span class="dv">2026</span> <span class="sc">+</span> i)</span>
+<span id="cb15-31"><a href="#cb15-31" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb15-32"><a href="#cb15-32" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Store the model:</span></span>
+<span id="cb15-33"><a href="#cb15-33" aria-hidden="true" tabindex="-1"></a>    split_fits[[i]] <span class="ot">&lt;-</span> fit_i</span>
+<span id="cb15-34"><a href="#cb15-34" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb15-35"><a href="#cb15-35" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Evaluate the Model Performance on the Training and Validation Sets:</span></span>
+<span id="cb15-36"><a href="#cb15-36" aria-hidden="true" tabindex="-1"></a>    tr_eval <span class="ot">&lt;-</span> <span class="fu">forward_split</span>(fit_i<span class="sc">$</span>par, Xu_train, Xv_train, Y_train, <span class="at">m =</span> <span class="dv">4</span>, <span class="at">nu =</span> nu_grid[i])</span>
+<span id="cb15-37"><a href="#cb15-37" aria-hidden="true" tabindex="-1"></a>    va_eval <span class="ot">&lt;-</span> <span class="fu">forward_split</span>(fit_i<span class="sc">$</span>par, Xu_valid, Xv_valid, Y_valid, <span class="at">m =</span> <span class="dv">4</span>, <span class="at">nu =</span> nu_grid[i])</span>
+<span id="cb15-38"><a href="#cb15-38" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb15-39"><a href="#cb15-39" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Make Predicted Class Labels for Training and Validation Sets:</span></span>
+<span id="cb15-40"><a href="#cb15-40" aria-hidden="true" tabindex="-1"></a>    tr_pred <span class="ot">&lt;-</span> <span class="fu">predict_split_class</span>(fit_i<span class="sc">$</span>par, Xu_train, Xv_train, <span class="at">m =</span> <span class="dv">4</span>)</span>
+<span id="cb15-41"><a href="#cb15-41" aria-hidden="true" tabindex="-1"></a>    va_pred <span class="ot">&lt;-</span> <span class="fu">predict_split_class</span>(fit_i<span class="sc">$</span>par, Xu_valid, Xv_valid, <span class="at">m =</span> <span class="dv">4</span>)</span>
+<span id="cb15-42"><a href="#cb15-42" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb15-43"><a href="#cb15-43" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Store the Results:</span></span>
+<span id="cb15-44"><a href="#cb15-44" aria-hidden="true" tabindex="-1"></a>    val_results<span class="sc">$</span>train_loss[i] <span class="ot">&lt;-</span> tr_eval<span class="sc">$</span>loss  <span class="co">#Training loss (penalised objective). </span></span>
+<span id="cb15-45"><a href="#cb15-45" aria-hidden="true" tabindex="-1"></a>    val_results<span class="sc">$</span>train_ce[i]   <span class="ot">&lt;-</span> tr_eval<span class="sc">$</span>ce  <span class="co">#Training cross-entropy.  </span></span>
+<span id="cb15-46"><a href="#cb15-46" aria-hidden="true" tabindex="-1"></a>    val_results<span class="sc">$</span>valid_ce[i]   <span class="ot">&lt;-</span> va_eval<span class="sc">$</span>ce  <span class="co">#Validation cross-entropy.</span></span>
+<span id="cb15-47"><a href="#cb15-47" aria-hidden="true" tabindex="-1"></a>    val_results<span class="sc">$</span>train_err[i]  <span class="ot">&lt;-</span> <span class="fu">misclass_rate</span>(tr_pred, Y_train)  <span class="co">#Training misclassification error. </span></span>
+<span id="cb15-48"><a href="#cb15-48" aria-hidden="true" tabindex="-1"></a>    val_results<span class="sc">$</span>valid_err[i]  <span class="ot">&lt;-</span> <span class="fu">misclass_rate</span>(va_pred, Y_valid)  <span class="co">#Validation misclassification error. </span></span>
+<span id="cb15-49"><a href="#cb15-49" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb15-50"><a href="#cb15-50" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Save the Results for Future Use:</span></span>
+<span id="cb15-51"><a href="#cb15-51" aria-hidden="true" tabindex="-1"></a>  <span class="fu">save</span>(val_results, split_fits, <span class="at">file =</span> <span class="st">"ValidationLoopResults.Rdata"</span>)</span>
+<span id="cb15-52"><a href="#cb15-52" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb15-53"><a href="#cb15-53" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-54"><a href="#cb15-54" aria-hidden="true" tabindex="-1"></a><span class="co"># Display the Results:</span></span>
+<span id="cb15-55"><a href="#cb15-55" aria-hidden="true" tabindex="-1"></a>val_results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>             nu train_loss   train_ce  valid_ce  train_err  valid_err
 1  0.0003354626  0.1067738 0.08994726 0.2144366 0.03169014 0.08333333
@@ -552,14 +545,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 <p>Select Best Regularisation Level</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co">#Indentifying the index of the best nu value (the one that minimises the validation cross-entropy):</span></span>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Indentifying the index of the best nu value (the one that minimises the validation cross-entropy):</span></span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>best_idx <span class="ot">&lt;-</span> <span class="fu">which.min</span>(val_results<span class="sc">$</span>valid_ce)</span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="co">#Extracting this corresponding optimal nu value:</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Extracting this corresponding optimal nu value:</span></span>
 <span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>best_nu  <span class="ot">&lt;-</span> val_results<span class="sc">$</span>nu[best_idx]</span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="co">#Extracting this corresponding fitted model:</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Extracting this corresponding fitted model:</span></span>
 <span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>best_fit_split <span class="ot">&lt;-</span> split_fits[[best_idx]]</span>
 <span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a><span class="co">#Displaying this nu value and its corresponding performance metrics:</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Displaying this nu value and its corresponding performance metrics:</span></span>
 <span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>best_nu</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 0.001186388</code></pre>
@@ -572,7 +565,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 <p>Validation Plot</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co">#Plotting validation cross-entropy against the regularisation parameter nu: </span></span>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Plotting validation cross-entropy against the regularisation parameter nu: </span></span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(val_results, <span class="fu">aes</span>(<span class="at">x =</span> nu, <span class="at">y =</span> valid_ce)) <span class="sc">+</span></span>
 <span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>() <span class="sc">+</span></span>
 <span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="at">data =</span> val_results[best_idx, ], <span class="at">size =</span> <span class="dv">4</span>, <span class="at">colour =</span> <span class="st">"red"</span>) <span class="sc">+</span></span>
@@ -580,8 +573,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_x_log10</span>() <span class="sc">+</span></span>
 <span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
 <span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">x =</span> <span class="fu">expression</span>(nu),</span>
-<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">y =</span> <span class="st">"Validation cross-entropy"</span></span>
-<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">y =</span> <span class="st">"Validation cross-entropy"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
 <p><img src="A2_Main_Quarto_files/figure-html/ValidationPlot-1.png" class="img-fluid" width="576"></p>
 </div>
@@ -596,42 +588,40 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="response-curves-over-fluid-carbs-and-sex-for-a-12-kmh-runner">Response curves over Fluid, Carbs, and Sex for a 12 km/h Runner</h3>
 <p>Build Prediction Grid</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co">#Create sequences over our range of Fluid and Carbs values:</span></span>
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Create sequences over our range of Fluid and Carbs values:</span></span>
 <span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>fluid_seq <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="fu">min</span>(dat<span class="sc">$</span>Fluid), <span class="fu">max</span>(dat<span class="sc">$</span>Fluid), <span class="at">length.out =</span> <span class="dv">100</span>)</span>
 <span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>carb_seq  <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="fu">min</span>(dat<span class="sc">$</span>Carbs), <span class="fu">max</span>(dat<span class="sc">$</span>Carbs), <span class="at">length.out =</span> <span class="dv">100</span>)</span>
 <span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a><span class="co">#Create a grid of all combinations of Fluid, Carbs and Sex:</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Create a grid of all combinations of Fluid, Carbs and Sex:</span></span>
 <span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>grid_pred <span class="ot">&lt;-</span> <span class="fu">expand.grid</span>(</span>
 <span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">Fluid =</span> fluid_seq,</span>
 <span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">Carbs =</span> carb_seq,</span>
-<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">Sex =</span> <span class="fu">c</span>(<span class="st">"Female"</span>, <span class="st">"Male"</span>)</span>
-<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a><span class="co">#Fix the AveSpeed for each combination as 12km/h:</span></span>
-<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a>grid_pred<span class="sc">$</span>AveSpeed <span class="ot">&lt;-</span> <span class="dv">12</span></span>
-<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a><span class="co">#Convert Sex into a numeric variable:</span></span>
-<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a>grid_pred<span class="sc">$</span>SexNum <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(grid_pred<span class="sc">$</span>Sex <span class="sc">==</span> <span class="st">"Male"</span>, <span class="dv">1</span>, <span class="dv">0</span>)</span>
-<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-18"><a href="#cb22-18" aria-hidden="true" tabindex="-1"></a><span class="co">#Create input matrices as needed by our split-brain network:</span></span>
-<span id="cb22-19"><a href="#cb22-19" aria-hidden="true" tabindex="-1"></a>Xu_grid <span class="ot">&lt;-</span> <span class="fu">t</span>(<span class="fu">as.matrix</span>(grid_pred[, <span class="fu">c</span>(<span class="st">"AveSpeed"</span>, <span class="st">"SexNum"</span>)]))</span>
-<span id="cb22-20"><a href="#cb22-20" aria-hidden="true" tabindex="-1"></a>Xv_grid <span class="ot">&lt;-</span> <span class="fu">t</span>(<span class="fu">as.matrix</span>(grid_pred[, <span class="fu">c</span>(<span class="st">"Fluid"</span>, <span class="st">"Carbs"</span>)]))</span>
-<span id="cb22-21"><a href="#cb22-21" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-22"><a href="#cb22-22" aria-hidden="true" tabindex="-1"></a><span class="co">#Evaluate the fitted model for each input in the grid:</span></span>
-<span id="cb22-23"><a href="#cb22-23" aria-hidden="true" tabindex="-1"></a>P_grid <span class="ot">&lt;-</span> <span class="fu">forward_split</span>(best_fit_split<span class="sc">$</span>par, Xu_grid, Xv_grid, <span class="at">m =</span> <span class="dv">4</span>)<span class="sc">$</span>P</span>
-<span id="cb22-24"><a href="#cb22-24" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-25"><a href="#cb22-25" aria-hidden="true" tabindex="-1"></a><span class="co">#Get the predicted probabilities of bombing for each input in the grid:</span></span>
-<span id="cb22-26"><a href="#cb22-26" aria-hidden="true" tabindex="-1"></a>grid_pred<span class="sc">$</span>ProbBombed <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(P_grid[<span class="dv">2</span>, ])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">Sex =</span> <span class="fu">c</span>(<span class="st">"Female"</span>, <span class="st">"Male"</span>))</span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Fix the AveSpeed for each combination as 12km/h:</span></span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a>grid_pred<span class="sc">$</span>AveSpeed <span class="ot">&lt;-</span> <span class="dv">12</span></span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Convert Sex into a numeric variable:</span></span>
+<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a>grid_pred<span class="sc">$</span>SexNum <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(grid_pred<span class="sc">$</span>Sex <span class="sc">==</span> <span class="st">"Male"</span>, <span class="dv">1</span>, <span class="dv">0</span>)</span>
+<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a><span class="co"># Create input matrices as needed by our split-brain network:</span></span>
+<span id="cb22-18"><a href="#cb22-18" aria-hidden="true" tabindex="-1"></a>Xu_grid <span class="ot">&lt;-</span> <span class="fu">t</span>(<span class="fu">as.matrix</span>(grid_pred[, <span class="fu">c</span>(<span class="st">"AveSpeed"</span>, <span class="st">"SexNum"</span>)]))</span>
+<span id="cb22-19"><a href="#cb22-19" aria-hidden="true" tabindex="-1"></a>Xv_grid <span class="ot">&lt;-</span> <span class="fu">t</span>(<span class="fu">as.matrix</span>(grid_pred[, <span class="fu">c</span>(<span class="st">"Fluid"</span>, <span class="st">"Carbs"</span>)]))</span>
+<span id="cb22-20"><a href="#cb22-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-21"><a href="#cb22-21" aria-hidden="true" tabindex="-1"></a><span class="co"># Evaluate the fitted model for each input in the grid:</span></span>
+<span id="cb22-22"><a href="#cb22-22" aria-hidden="true" tabindex="-1"></a>P_grid <span class="ot">&lt;-</span> <span class="fu">forward_split</span>(best_fit_split<span class="sc">$</span>par, Xu_grid, Xv_grid, <span class="at">m =</span> <span class="dv">4</span>)<span class="sc">$</span>P</span>
+<span id="cb22-23"><a href="#cb22-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-24"><a href="#cb22-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Get the Predicted Probabilities of Bombing for Each Input in the Grid:</span></span>
+<span id="cb22-25"><a href="#cb22-25" aria-hidden="true" tabindex="-1"></a>grid_pred<span class="sc">$</span>ProbBombed <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(P_grid[<span class="dv">2</span>, ])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Surface-Style Heatmaps</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co">#Plotting the response surface for a runner targeting 12km/h, showing the predicted probability of bombing over Fluid and Carbs, with separate plots for each Sex:</span></span>
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Plotting the response surface for a runner targeting 12km/h, showing the predicted probability of bombing over Fluid and Carbs, with separate plots for each Sex:</span></span>
 <span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(grid_pred, <span class="fu">aes</span>(<span class="at">x =</span> Fluid, <span class="at">y =</span> Carbs, <span class="at">fill =</span> ProbBombed)) <span class="sc">+</span></span>
 <span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_tile</span>() <span class="sc">+</span></span>
 <span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> Sex) <span class="sc">+</span></span>
 <span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
-<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">fill =</span> <span class="st">"Pr(Bombed)"</span></span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">fill =</span> <span class="st">"Pr(Bombed)"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
 <p><img src="A2_Main_Quarto_files/figure-html/ResponseHeatmaps-1.png" class="img-fluid" width="768"></p>
 </div>
@@ -651,149 +641,183 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="empirical-advantage-of-the-split-brain-network">Empirical Advantage of the Split-Brain Network:</h3>
 <p>Fit a Comparable Standard Dense Network</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>X_full <span class="ot">&lt;-</span> <span class="fu">rbind</span>(Xu, Xv)</span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>unpack_standard_params <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, p, m1, m2, q) {</span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>  idx <span class="ot">&lt;-</span> <span class="dv">1</span></span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>  take <span class="ot">&lt;-</span> <span class="cf">function</span>(k) {</span>
-<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>    out <span class="ot">&lt;-</span> theta[idx<span class="sc">:</span>(idx <span class="sc">+</span> k <span class="sc">-</span> <span class="dv">1</span>)]</span>
-<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>    idx <span class="ot">&lt;&lt;-</span> idx <span class="sc">+</span> k</span>
-<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>    out</span>
-<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>  }</span>
-<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>  W1 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m1 <span class="sc">*</span> p), <span class="at">nrow =</span> m1, <span class="at">ncol =</span> p)</span>
-<span id="cb24-13"><a href="#cb24-13" aria-hidden="true" tabindex="-1"></a>  b1 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m1), <span class="at">nrow =</span> m1, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Combine the Split Matrices into One Input Matrix:</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>X_full <span class="ot">&lt;-</span> <span class="fu">rbind</span>(Xu, Xv)</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to Unpack Parameter Vector into Standard Network Weights and Biases:</span></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>unpack_standard_params <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, p, m1, m2, q) {</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>  idx <span class="ot">&lt;-</span> <span class="dv">1</span></span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Helper Function to Extract Next k Parameters from Theta:</span></span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>  take <span class="ot">&lt;-</span> <span class="cf">function</span>(k) {</span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>    out <span class="ot">&lt;-</span> theta[idx<span class="sc">:</span>(idx <span class="sc">+</span> k <span class="sc">-</span> <span class="dv">1</span>)]</span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>    idx <span class="ot">&lt;&lt;-</span> idx <span class="sc">+</span> k</span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>    out</span>
+<span id="cb24-13"><a href="#cb24-13" aria-hidden="true" tabindex="-1"></a>  }</span>
 <span id="cb24-14"><a href="#cb24-14" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-15"><a href="#cb24-15" aria-hidden="true" tabindex="-1"></a>  W2 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m2 <span class="sc">*</span> m1), <span class="at">nrow =</span> m2, <span class="at">ncol =</span> m1)</span>
-<span id="cb24-16"><a href="#cb24-16" aria-hidden="true" tabindex="-1"></a>  b2 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m2), <span class="at">nrow =</span> m2, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
-<span id="cb24-17"><a href="#cb24-17" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-18"><a href="#cb24-18" aria-hidden="true" tabindex="-1"></a>  W3 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(q <span class="sc">*</span> m2), <span class="at">nrow =</span> q, <span class="at">ncol =</span> m2)</span>
-<span id="cb24-19"><a href="#cb24-19" aria-hidden="true" tabindex="-1"></a>  b3 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(q), <span class="at">nrow =</span> q, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
-<span id="cb24-20"><a href="#cb24-20" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-21"><a href="#cb24-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">list</span>(<span class="at">W1 =</span> W1, <span class="at">b1 =</span> b1, <span class="at">W2 =</span> W2, <span class="at">b2 =</span> b2, <span class="at">W3 =</span> W3, <span class="at">b3 =</span> b3)</span>
-<span id="cb24-22"><a href="#cb24-22" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb24-23"><a href="#cb24-23" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-24"><a href="#cb24-24" aria-hidden="true" tabindex="-1"></a>n_params_standard <span class="ot">&lt;-</span> <span class="cf">function</span>(p, m1, m2, q) {</span>
-<span id="cb24-25"><a href="#cb24-25" aria-hidden="true" tabindex="-1"></a>  m1<span class="sc">*</span>p <span class="sc">+</span> m1 <span class="sc">+</span> m2<span class="sc">*</span>m1 <span class="sc">+</span> m2 <span class="sc">+</span> q<span class="sc">*</span>m2 <span class="sc">+</span> q</span>
-<span id="cb24-26"><a href="#cb24-26" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb24-27"><a href="#cb24-27" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-28"><a href="#cb24-28" aria-hidden="true" tabindex="-1"></a>init_standard_params <span class="ot">&lt;-</span> <span class="cf">function</span>(p, m1, m2, q, <span class="at">sd =</span> <span class="fl">0.1</span>) {</span>
-<span id="cb24-29"><a href="#cb24-29" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rnorm</span>(<span class="fu">n_params_standard</span>(p, m1, m2, q), <span class="at">mean =</span> <span class="dv">0</span>, <span class="at">sd =</span> sd)</span>
-<span id="cb24-30"><a href="#cb24-30" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb24-31"><a href="#cb24-31" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-32"><a href="#cb24-32" aria-hidden="true" tabindex="-1"></a>forward_standard <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, X, <span class="at">Y =</span> <span class="cn">NULL</span>, <span class="at">m1 =</span> <span class="dv">8</span>, <span class="at">m2 =</span> <span class="dv">2</span>, <span class="at">nu =</span> <span class="dv">0</span>) {</span>
-<span id="cb24-33"><a href="#cb24-33" aria-hidden="true" tabindex="-1"></a>  p <span class="ot">&lt;-</span> <span class="fu">nrow</span>(X)</span>
-<span id="cb24-34"><a href="#cb24-34" aria-hidden="true" tabindex="-1"></a>  q <span class="ot">&lt;-</span> <span class="dv">2</span></span>
-<span id="cb24-35"><a href="#cb24-35" aria-hidden="true" tabindex="-1"></a>  N <span class="ot">&lt;-</span> <span class="fu">ncol</span>(X)</span>
-<span id="cb24-36"><a href="#cb24-36" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-37"><a href="#cb24-37" aria-hidden="true" tabindex="-1"></a>  pars <span class="ot">&lt;-</span> <span class="fu">unpack_standard_params</span>(theta, p, m1, m2, q)</span>
-<span id="cb24-38"><a href="#cb24-38" aria-hidden="true" tabindex="-1"></a>  oneN <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">1</span>, <span class="at">nrow =</span> <span class="dv">1</span>, <span class="at">ncol =</span> N)</span>
-<span id="cb24-39"><a href="#cb24-39" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-40"><a href="#cb24-40" aria-hidden="true" tabindex="-1"></a>  Z1 <span class="ot">&lt;-</span> pars<span class="sc">$</span>W1 <span class="sc">%*%</span> X <span class="sc">+</span> pars<span class="sc">$</span>b1 <span class="sc">%*%</span> oneN</span>
-<span id="cb24-41"><a href="#cb24-41" aria-hidden="true" tabindex="-1"></a>  A1 <span class="ot">&lt;-</span> <span class="fu">tanh</span>(Z1)</span>
-<span id="cb24-42"><a href="#cb24-42" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-43"><a href="#cb24-43" aria-hidden="true" tabindex="-1"></a>  Z2 <span class="ot">&lt;-</span> pars<span class="sc">$</span>W2 <span class="sc">%*%</span> A1 <span class="sc">+</span> pars<span class="sc">$</span>b2 <span class="sc">%*%</span> oneN</span>
-<span id="cb24-44"><a href="#cb24-44" aria-hidden="true" tabindex="-1"></a>  A2 <span class="ot">&lt;-</span> <span class="fu">tanh</span>(Z2)</span>
+<span id="cb24-15"><a href="#cb24-15" aria-hidden="true" tabindex="-1"></a>  <span class="co"># First Hidden Layer Parameters:</span></span>
+<span id="cb24-16"><a href="#cb24-16" aria-hidden="true" tabindex="-1"></a>  W1 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m1 <span class="sc">*</span> p), <span class="at">nrow =</span> m1, <span class="at">ncol =</span> p)</span>
+<span id="cb24-17"><a href="#cb24-17" aria-hidden="true" tabindex="-1"></a>  b1 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m1), <span class="at">nrow =</span> m1, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
+<span id="cb24-18"><a href="#cb24-18" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb24-19"><a href="#cb24-19" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Second Hidden Layer Parameters:</span></span>
+<span id="cb24-20"><a href="#cb24-20" aria-hidden="true" tabindex="-1"></a>  W2 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m2 <span class="sc">*</span> m1), <span class="at">nrow =</span> m2, <span class="at">ncol =</span> m1)</span>
+<span id="cb24-21"><a href="#cb24-21" aria-hidden="true" tabindex="-1"></a>  b2 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(m2), <span class="at">nrow =</span> m2, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
+<span id="cb24-22"><a href="#cb24-22" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb24-23"><a href="#cb24-23" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Third Hidden Layer Parameters:</span></span>
+<span id="cb24-24"><a href="#cb24-24" aria-hidden="true" tabindex="-1"></a>  W3 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(q <span class="sc">*</span> m2), <span class="at">nrow =</span> q, <span class="at">ncol =</span> m2)</span>
+<span id="cb24-25"><a href="#cb24-25" aria-hidden="true" tabindex="-1"></a>  b3 <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">take</span>(q), <span class="at">nrow =</span> q, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
+<span id="cb24-26"><a href="#cb24-26" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb24-27"><a href="#cb24-27" aria-hidden="true" tabindex="-1"></a>  <span class="fu">list</span>(<span class="at">W1 =</span> W1, <span class="at">b1 =</span> b1, <span class="at">W2 =</span> W2, <span class="at">b2 =</span> b2, <span class="at">W3 =</span> W3, <span class="at">b3 =</span> b3)</span>
+<span id="cb24-28"><a href="#cb24-28" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb24-29"><a href="#cb24-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-30"><a href="#cb24-30" aria-hidden="true" tabindex="-1"></a><span class="co">#Function to Determine the Number of Parameters</span></span>
+<span id="cb24-31"><a href="#cb24-31" aria-hidden="true" tabindex="-1"></a>n_params_standard <span class="ot">&lt;-</span> <span class="cf">function</span>(p, m1, m2, q) {</span>
+<span id="cb24-32"><a href="#cb24-32" aria-hidden="true" tabindex="-1"></a>  m1<span class="sc">*</span>p <span class="sc">+</span> m1 <span class="sc">+</span> m2<span class="sc">*</span>m1 <span class="sc">+</span> m2 <span class="sc">+</span> q<span class="sc">*</span>m2 <span class="sc">+</span> q</span>
+<span id="cb24-33"><a href="#cb24-33" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb24-34"><a href="#cb24-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-35"><a href="#cb24-35" aria-hidden="true" tabindex="-1"></a><span class="co"># Initialising the Parameters Randomly:</span></span>
+<span id="cb24-36"><a href="#cb24-36" aria-hidden="true" tabindex="-1"></a>init_standard_params <span class="ot">&lt;-</span> <span class="cf">function</span>(p, m1, m2, q, <span class="at">sd =</span> <span class="fl">0.1</span>) {</span>
+<span id="cb24-37"><a href="#cb24-37" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rnorm</span>(<span class="fu">n_params_standard</span>(p, m1, m2, q), <span class="at">mean =</span> <span class="dv">0</span>, <span class="at">sd =</span> sd)</span>
+<span id="cb24-38"><a href="#cb24-38" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb24-39"><a href="#cb24-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-40"><a href="#cb24-40" aria-hidden="true" tabindex="-1"></a><span class="co"># Forward Pass Through the NN:</span></span>
+<span id="cb24-41"><a href="#cb24-41" aria-hidden="true" tabindex="-1"></a>forward_standard <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, X, <span class="at">Y =</span> <span class="cn">NULL</span>, <span class="at">m1 =</span> <span class="dv">8</span>, <span class="at">m2 =</span> <span class="dv">2</span>, <span class="at">nu =</span> <span class="dv">0</span>) {</span>
+<span id="cb24-42"><a href="#cb24-42" aria-hidden="true" tabindex="-1"></a>  p <span class="ot">&lt;-</span> <span class="fu">nrow</span>(X)</span>
+<span id="cb24-43"><a href="#cb24-43" aria-hidden="true" tabindex="-1"></a>  q <span class="ot">&lt;-</span> <span class="dv">2</span></span>
+<span id="cb24-44"><a href="#cb24-44" aria-hidden="true" tabindex="-1"></a>  N <span class="ot">&lt;-</span> <span class="fu">ncol</span>(X)</span>
 <span id="cb24-45"><a href="#cb24-45" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-46"><a href="#cb24-46" aria-hidden="true" tabindex="-1"></a>  Z3 <span class="ot">&lt;-</span> pars<span class="sc">$</span>W3 <span class="sc">%*%</span> A2 <span class="sc">+</span> pars<span class="sc">$</span>b3 <span class="sc">%*%</span> oneN</span>
-<span id="cb24-47"><a href="#cb24-47" aria-hidden="true" tabindex="-1"></a>  P <span class="ot">&lt;-</span> <span class="fu">softmax_mat</span>(Z3)</span>
-<span id="cb24-48"><a href="#cb24-48" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-49"><a href="#cb24-49" aria-hidden="true" tabindex="-1"></a>  out <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">P =</span> P)</span>
+<span id="cb24-46"><a href="#cb24-46" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Unpacking Parameter Vector into Structured Weight and Bias Matrices:</span></span>
+<span id="cb24-47"><a href="#cb24-47" aria-hidden="true" tabindex="-1"></a>  pars <span class="ot">&lt;-</span> <span class="fu">unpack_standard_params</span>(theta, p, m1, m2, q)</span>
+<span id="cb24-48"><a href="#cb24-48" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Creation of Row Vector of Ones to "Broadcast" Bias Terms Across Observations:</span></span>
+<span id="cb24-49"><a href="#cb24-49" aria-hidden="true" tabindex="-1"></a>  oneN <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">1</span>, <span class="at">nrow =</span> <span class="dv">1</span>, <span class="at">ncol =</span> N)</span>
 <span id="cb24-50"><a href="#cb24-50" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-51"><a href="#cb24-51" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(Y)) {</span>
-<span id="cb24-52"><a href="#cb24-52" aria-hidden="true" tabindex="-1"></a>    eps <span class="ot">&lt;-</span> <span class="fl">1e-12</span></span>
-<span id="cb24-53"><a href="#cb24-53" aria-hidden="true" tabindex="-1"></a>    ce <span class="ot">&lt;-</span> <span class="sc">-</span><span class="fu">mean</span>(<span class="fu">colSums</span>(Y <span class="sc">*</span> <span class="fu">log</span>(P <span class="sc">+</span> eps)))</span>
-<span id="cb24-54"><a href="#cb24-54" aria-hidden="true" tabindex="-1"></a>    reg <span class="ot">&lt;-</span> (nu <span class="sc">/</span> <span class="dv">2</span>) <span class="sc">*</span> (<span class="fu">sum</span>(pars<span class="sc">$</span>W1<span class="sc">^</span><span class="dv">2</span>) <span class="sc">+</span> <span class="fu">sum</span>(pars<span class="sc">$</span>W2<span class="sc">^</span><span class="dv">2</span>) <span class="sc">+</span> <span class="fu">sum</span>(pars<span class="sc">$</span>W3<span class="sc">^</span><span class="dv">2</span>))</span>
-<span id="cb24-55"><a href="#cb24-55" aria-hidden="true" tabindex="-1"></a>    out<span class="sc">$</span>loss <span class="ot">&lt;-</span> ce <span class="sc">+</span> reg</span>
-<span id="cb24-56"><a href="#cb24-56" aria-hidden="true" tabindex="-1"></a>    out<span class="sc">$</span>ce <span class="ot">&lt;-</span> ce</span>
-<span id="cb24-57"><a href="#cb24-57" aria-hidden="true" tabindex="-1"></a>    out<span class="sc">$</span>reg <span class="ot">&lt;-</span> reg</span>
-<span id="cb24-58"><a href="#cb24-58" aria-hidden="true" tabindex="-1"></a>  }</span>
-<span id="cb24-59"><a href="#cb24-59" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-60"><a href="#cb24-60" aria-hidden="true" tabindex="-1"></a>  out</span>
-<span id="cb24-61"><a href="#cb24-61" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb24-62"><a href="#cb24-62" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-63"><a href="#cb24-63" aria-hidden="true" tabindex="-1"></a>fit_standard_network <span class="ot">&lt;-</span> <span class="cf">function</span>(X_train, Y_train, <span class="at">m1 =</span> <span class="dv">8</span>, <span class="at">m2 =</span> <span class="dv">2</span>, <span class="at">nu =</span> <span class="dv">0</span>,</span>
-<span id="cb24-64"><a href="#cb24-64" aria-hidden="true" tabindex="-1"></a>                                 <span class="at">maxit =</span> <span class="dv">1000</span>, <span class="at">n_starts =</span> <span class="dv">3</span>, <span class="at">seed =</span> <span class="dv">2026</span>) {</span>
-<span id="cb24-65"><a href="#cb24-65" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set.seed</span>(seed)</span>
-<span id="cb24-66"><a href="#cb24-66" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-67"><a href="#cb24-67" aria-hidden="true" tabindex="-1"></a>  p <span class="ot">&lt;-</span> <span class="fu">nrow</span>(X_train)</span>
-<span id="cb24-68"><a href="#cb24-68" aria-hidden="true" tabindex="-1"></a>  q <span class="ot">&lt;-</span> <span class="fu">nrow</span>(Y_train)</span>
-<span id="cb24-69"><a href="#cb24-69" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-70"><a href="#cb24-70" aria-hidden="true" tabindex="-1"></a>  best_fit <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
-<span id="cb24-71"><a href="#cb24-71" aria-hidden="true" tabindex="-1"></a>  best_val <span class="ot">&lt;-</span> <span class="cn">Inf</span></span>
-<span id="cb24-72"><a href="#cb24-72" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-73"><a href="#cb24-73" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (s <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>n_starts) {</span>
-<span id="cb24-74"><a href="#cb24-74" aria-hidden="true" tabindex="-1"></a>    theta0 <span class="ot">&lt;-</span> <span class="fu">init_standard_params</span>(p, m1, m2, q, <span class="at">sd =</span> <span class="fl">0.1</span>)</span>
-<span id="cb24-75"><a href="#cb24-75" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb24-76"><a href="#cb24-76" aria-hidden="true" tabindex="-1"></a>    fit <span class="ot">&lt;-</span> <span class="fu">optim</span>(</span>
-<span id="cb24-77"><a href="#cb24-77" aria-hidden="true" tabindex="-1"></a>      <span class="at">par =</span> theta0,</span>
-<span id="cb24-78"><a href="#cb24-78" aria-hidden="true" tabindex="-1"></a>      <span class="at">fn =</span> <span class="cf">function</span>(th) <span class="fu">forward_standard</span>(th, X_train, Y_train, <span class="at">m1 =</span> m1, <span class="at">m2 =</span> m2, <span class="at">nu =</span> nu)<span class="sc">$</span>loss,</span>
-<span id="cb24-79"><a href="#cb24-79" aria-hidden="true" tabindex="-1"></a>      <span class="at">method =</span> <span class="st">"BFGS"</span>,</span>
-<span id="cb24-80"><a href="#cb24-80" aria-hidden="true" tabindex="-1"></a>      <span class="at">control =</span> <span class="fu">list</span>(<span class="at">maxit =</span> maxit, <span class="at">reltol =</span> <span class="fl">1e-8</span>)</span>
-<span id="cb24-81"><a href="#cb24-81" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb24-82"><a href="#cb24-82" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb24-83"><a href="#cb24-83" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (fit<span class="sc">$</span>value <span class="sc">&lt;</span> best_val) {</span>
-<span id="cb24-84"><a href="#cb24-84" aria-hidden="true" tabindex="-1"></a>      best_val <span class="ot">&lt;-</span> fit<span class="sc">$</span>value</span>
-<span id="cb24-85"><a href="#cb24-85" aria-hidden="true" tabindex="-1"></a>      best_fit <span class="ot">&lt;-</span> fit</span>
-<span id="cb24-86"><a href="#cb24-86" aria-hidden="true" tabindex="-1"></a>    }</span>
-<span id="cb24-87"><a href="#cb24-87" aria-hidden="true" tabindex="-1"></a>  }</span>
-<span id="cb24-88"><a href="#cb24-88" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb24-89"><a href="#cb24-89" aria-hidden="true" tabindex="-1"></a>  best_fit</span>
-<span id="cb24-90"><a href="#cb24-90" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb24-91"><a href="#cb24-91" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-92"><a href="#cb24-92" aria-hidden="true" tabindex="-1"></a>predict_standard_class <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, X, <span class="at">m1 =</span> <span class="dv">8</span>, <span class="at">m2 =</span> <span class="dv">2</span>) {</span>
-<span id="cb24-93"><a href="#cb24-93" aria-hidden="true" tabindex="-1"></a>  P <span class="ot">&lt;-</span> <span class="fu">forward_standard</span>(theta, X, <span class="at">m1 =</span> m1, <span class="at">m2 =</span> m2)<span class="sc">$</span>P</span>
-<span id="cb24-94"><a href="#cb24-94" aria-hidden="true" tabindex="-1"></a>  <span class="fu">max.col</span>(<span class="fu">t</span>(P)) <span class="sc">-</span> <span class="dv">1</span></span>
-<span id="cb24-95"><a href="#cb24-95" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb24-51"><a href="#cb24-51" aria-hidden="true" tabindex="-1"></a>  <span class="co"># First Hidden Layer:</span></span>
+<span id="cb24-52"><a href="#cb24-52" aria-hidden="true" tabindex="-1"></a>  Z1 <span class="ot">&lt;-</span> pars<span class="sc">$</span>W1 <span class="sc">%*%</span> X <span class="sc">+</span> pars<span class="sc">$</span>b1 <span class="sc">%*%</span> oneN</span>
+<span id="cb24-53"><a href="#cb24-53" aria-hidden="true" tabindex="-1"></a>  A1 <span class="ot">&lt;-</span> <span class="fu">tanh</span>(Z1)</span>
+<span id="cb24-54"><a href="#cb24-54" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb24-55"><a href="#cb24-55" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Second Hidden Layer:</span></span>
+<span id="cb24-56"><a href="#cb24-56" aria-hidden="true" tabindex="-1"></a>  Z2 <span class="ot">&lt;-</span> pars<span class="sc">$</span>W2 <span class="sc">%*%</span> A1 <span class="sc">+</span> pars<span class="sc">$</span>b2 <span class="sc">%*%</span> oneN</span>
+<span id="cb24-57"><a href="#cb24-57" aria-hidden="true" tabindex="-1"></a>  A2 <span class="ot">&lt;-</span> <span class="fu">tanh</span>(Z2)</span>
+<span id="cb24-58"><a href="#cb24-58" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb24-59"><a href="#cb24-59" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Third Hidden Layer:</span></span>
+<span id="cb24-60"><a href="#cb24-60" aria-hidden="true" tabindex="-1"></a>  Z3 <span class="ot">&lt;-</span> pars<span class="sc">$</span>W3 <span class="sc">%*%</span> A2 <span class="sc">+</span> pars<span class="sc">$</span>b3 <span class="sc">%*%</span> oneN</span>
+<span id="cb24-61"><a href="#cb24-61" aria-hidden="true" tabindex="-1"></a>  P <span class="ot">&lt;-</span> <span class="fu">softmax</span>(Z3)</span>
+<span id="cb24-62"><a href="#cb24-62" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb24-63"><a href="#cb24-63" aria-hidden="true" tabindex="-1"></a>  out <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">P =</span> P)</span>
+<span id="cb24-64"><a href="#cb24-64" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb24-65"><a href="#cb24-65" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Check for Response Matrix so that Objective Function can be Evaluated:</span></span>
+<span id="cb24-66"><a href="#cb24-66" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(Y)) {</span>
+<span id="cb24-67"><a href="#cb24-67" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Definition of Small Constant to Avoid log(0):</span></span>
+<span id="cb24-68"><a href="#cb24-68" aria-hidden="true" tabindex="-1"></a>    eps <span class="ot">&lt;-</span> <span class="fl">1e-12</span></span>
+<span id="cb24-69"><a href="#cb24-69" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Computation of Cross-Entropy Component of the Objective Function</span></span>
+<span id="cb24-70"><a href="#cb24-70" aria-hidden="true" tabindex="-1"></a>    ce <span class="ot">&lt;-</span> <span class="sc">-</span><span class="fu">mean</span>(<span class="fu">colSums</span>(Y <span class="sc">*</span> <span class="fu">log</span>(P <span class="sc">+</span> eps)))</span>
+<span id="cb24-71"><a href="#cb24-71" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Computation of L2 Regularisation Penalty on Weight Matrices Component:</span></span>
+<span id="cb24-72"><a href="#cb24-72" aria-hidden="true" tabindex="-1"></a>    reg <span class="ot">&lt;-</span> (nu <span class="sc">/</span> <span class="dv">2</span>) <span class="sc">*</span> (<span class="fu">sum</span>(pars<span class="sc">$</span>W1<span class="sc">^</span><span class="dv">2</span>) <span class="sc">+</span> <span class="fu">sum</span>(pars<span class="sc">$</span>W2<span class="sc">^</span><span class="dv">2</span>) <span class="sc">+</span> <span class="fu">sum</span>(pars<span class="sc">$</span>W3<span class="sc">^</span><span class="dv">2</span>))</span>
+<span id="cb24-73"><a href="#cb24-73" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Storage of Total Objective Function &amp; Spearate Compenents:</span></span>
+<span id="cb24-74"><a href="#cb24-74" aria-hidden="true" tabindex="-1"></a>    out<span class="sc">$</span>loss <span class="ot">&lt;-</span> ce <span class="sc">+</span> reg</span>
+<span id="cb24-75"><a href="#cb24-75" aria-hidden="true" tabindex="-1"></a>    out<span class="sc">$</span>ce <span class="ot">&lt;-</span> ce</span>
+<span id="cb24-76"><a href="#cb24-76" aria-hidden="true" tabindex="-1"></a>    out<span class="sc">$</span>reg <span class="ot">&lt;-</span> reg</span>
+<span id="cb24-77"><a href="#cb24-77" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb24-78"><a href="#cb24-78" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb24-79"><a href="#cb24-79" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-80"><a href="#cb24-80" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to Fit the Standard NN Using Optim Function:</span></span>
+<span id="cb24-81"><a href="#cb24-81" aria-hidden="true" tabindex="-1"></a>fit_standard_network <span class="ot">&lt;-</span> <span class="cf">function</span>(X_train, Y_train, <span class="at">m1 =</span> <span class="dv">8</span>, <span class="at">m2 =</span> <span class="dv">2</span>, <span class="at">nu =</span> <span class="dv">0</span>,</span>
+<span id="cb24-82"><a href="#cb24-82" aria-hidden="true" tabindex="-1"></a>                                 <span class="at">maxit =</span> <span class="dv">1000</span>, <span class="at">n_starts =</span> <span class="dv">8</span>, <span class="at">seed =</span> <span class="dv">2026</span>) {</span>
+<span id="cb24-83"><a href="#cb24-83" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set.seed</span>(seed)</span>
+<span id="cb24-84"><a href="#cb24-84" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb24-85"><a href="#cb24-85" aria-hidden="true" tabindex="-1"></a>  p <span class="ot">&lt;-</span> <span class="fu">nrow</span>(X_train)</span>
+<span id="cb24-86"><a href="#cb24-86" aria-hidden="true" tabindex="-1"></a>  q <span class="ot">&lt;-</span> <span class="fu">nrow</span>(Y_train)</span>
+<span id="cb24-87"><a href="#cb24-87" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb24-88"><a href="#cb24-88" aria-hidden="true" tabindex="-1"></a>  best_fit <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb24-89"><a href="#cb24-89" aria-hidden="true" tabindex="-1"></a>  best_val <span class="ot">&lt;-</span> <span class="cn">Inf</span></span>
+<span id="cb24-90"><a href="#cb24-90" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb24-91"><a href="#cb24-91" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Multiple Starts to Avoid Poor Local Minimums:</span></span>
+<span id="cb24-92"><a href="#cb24-92" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (s <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>n_starts) {</span>
+<span id="cb24-93"><a href="#cb24-93" aria-hidden="true" tabindex="-1"></a>    theta0 <span class="ot">&lt;-</span> <span class="fu">init_standard_params</span>(p, m1, m2, q, <span class="at">sd =</span> <span class="fl">0.1</span>)</span>
+<span id="cb24-94"><a href="#cb24-94" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb24-95"><a href="#cb24-95" aria-hidden="true" tabindex="-1"></a>    fit <span class="ot">&lt;-</span> <span class="fu">optim</span>(</span>
+<span id="cb24-96"><a href="#cb24-96" aria-hidden="true" tabindex="-1"></a>      <span class="at">par =</span> theta0,</span>
+<span id="cb24-97"><a href="#cb24-97" aria-hidden="true" tabindex="-1"></a>      <span class="at">fn =</span> <span class="cf">function</span>(th) <span class="fu">forward_standard</span>(th, X_train, Y_train, <span class="at">m1 =</span> m1, <span class="at">m2 =</span> m2, <span class="at">nu =</span> nu)<span class="sc">$</span>loss,</span>
+<span id="cb24-98"><a href="#cb24-98" aria-hidden="true" tabindex="-1"></a>      <span class="at">method =</span> <span class="st">"BFGS"</span>,</span>
+<span id="cb24-99"><a href="#cb24-99" aria-hidden="true" tabindex="-1"></a>      <span class="at">control =</span> <span class="fu">list</span>(<span class="at">maxit =</span> maxit, <span class="at">reltol =</span> <span class="fl">1e-8</span>))</span>
+<span id="cb24-100"><a href="#cb24-100" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb24-101"><a href="#cb24-101" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Store the Best Solution:</span></span>
+<span id="cb24-102"><a href="#cb24-102" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (fit<span class="sc">$</span>value <span class="sc">&lt;</span> best_val) {</span>
+<span id="cb24-103"><a href="#cb24-103" aria-hidden="true" tabindex="-1"></a>      best_val <span class="ot">&lt;-</span> fit<span class="sc">$</span>value</span>
+<span id="cb24-104"><a href="#cb24-104" aria-hidden="true" tabindex="-1"></a>      best_fit <span class="ot">&lt;-</span> fit</span>
+<span id="cb24-105"><a href="#cb24-105" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb24-106"><a href="#cb24-106" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb24-107"><a href="#cb24-107" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb24-108"><a href="#cb24-108" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-109"><a href="#cb24-109" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate Predicted Class Labels from the Standard NN:</span></span>
+<span id="cb24-110"><a href="#cb24-110" aria-hidden="true" tabindex="-1"></a>predict_standard_class <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, X, <span class="at">m1 =</span> <span class="dv">8</span>, <span class="at">m2 =</span> <span class="dv">2</span>) {</span>
+<span id="cb24-111"><a href="#cb24-111" aria-hidden="true" tabindex="-1"></a>  P <span class="ot">&lt;-</span> <span class="fu">forward_standard</span>(theta, X, <span class="at">m1 =</span> m1, <span class="at">m2 =</span> m2)<span class="sc">$</span>P</span>
+<span id="cb24-112"><a href="#cb24-112" aria-hidden="true" tabindex="-1"></a>  <span class="fu">max.col</span>(<span class="fu">t</span>(P)) <span class="sc">-</span> <span class="dv">1</span></span>
+<span id="cb24-113"><a href="#cb24-113" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Compare Split-Brain and Standard Networks</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>X_train <span class="ot">&lt;-</span> X_full[, train_id, drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>X_valid <span class="ot">&lt;-</span> X_full[, valid_id, drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">file.exists</span>(<span class="st">"NetworkComparisonObjects.RData"</span>))</span>
-<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">load</span>(<span class="st">"NetworkComparisonObjects.RData"</span>)</span>
-<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> </span>
-<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>  <span class="co"># use same best_nu for a fair first comparison</span></span>
-<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a>  fit_standard_bestnu <span class="ot">&lt;-</span> <span class="fu">fit_standard_network</span>(</span>
-<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>    X_train, Y_train,</span>
-<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">m1 =</span> <span class="dv">8</span>, <span class="at">m2 =</span> <span class="dv">2</span>, <span class="at">nu =</span> best_nu,</span>
-<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">maxit =</span> <span class="dv">800</span>, <span class="at">n_starts =</span> <span class="dv">3</span>, <span class="at">seed =</span> <span class="dv">999</span></span>
-<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a>  )</span>
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Subset Data into Training and Validation Sets:</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>X_train <span class="ot">&lt;-</span> X_full[, train_id, drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>X_valid <span class="ot">&lt;-</span> X_full[, valid_id, drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">file.exists</span>(<span class="st">"NetworkComparisonObjects.RData"</span>))</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">load</span>(<span class="st">"NetworkComparisonObjects.RData"</span>)</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> </span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Use Same best_nu for a Fair First Comparison and Fit a Standard NN:</span></span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>  fit_standard_bestnu <span class="ot">&lt;-</span> <span class="fu">fit_standard_network</span>(</span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>    X_train, Y_train,</span>
+<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">m1 =</span> <span class="dv">8</span>, <span class="at">m2 =</span> <span class="dv">2</span>, <span class="at">nu =</span> best_nu,</span>
+<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">maxit =</span> <span class="dv">800</span>, <span class="at">n_starts =</span> <span class="dv">3</span>, <span class="at">seed =</span> <span class="dv">999</span>)</span>
 <span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb25-16"><a href="#cb25-16" aria-hidden="true" tabindex="-1"></a>  split_valid_ce <span class="ot">&lt;-</span> <span class="fu">forward_split</span>(best_fit_split<span class="sc">$</span>par, Xu_valid, Xv_valid, Y_valid, <span class="at">m =</span> <span class="dv">4</span>, <span class="at">nu =</span> best_nu)<span class="sc">$</span>ce</span>
-<span id="cb25-17"><a href="#cb25-17" aria-hidden="true" tabindex="-1"></a>  std_valid_ce   <span class="ot">&lt;-</span> <span class="fu">forward_standard</span>(fit_standard_bestnu<span class="sc">$</span>par, X_valid, Y_valid, <span class="at">m1 =</span> <span class="dv">8</span>, <span class="at">m2 =</span> <span class="dv">2</span>, <span class="at">nu =</span> best_nu)<span class="sc">$</span>ce</span>
-<span id="cb25-18"><a href="#cb25-18" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb25-19"><a href="#cb25-19" aria-hidden="true" tabindex="-1"></a>  split_valid_err <span class="ot">&lt;-</span> <span class="fu">misclass_rate</span>(</span>
-<span id="cb25-20"><a href="#cb25-20" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict_split_class</span>(best_fit_split<span class="sc">$</span>par, Xu_valid, Xv_valid, <span class="at">m =</span> <span class="dv">4</span>),</span>
-<span id="cb25-21"><a href="#cb25-21" aria-hidden="true" tabindex="-1"></a>    Y_valid</span>
-<span id="cb25-22"><a href="#cb25-22" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb25-16"><a href="#cb25-16" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Determine Validation Cross Entropy for Each Model:</span></span>
+<span id="cb25-17"><a href="#cb25-17" aria-hidden="true" tabindex="-1"></a>  split_valid_ce <span class="ot">&lt;-</span> <span class="fu">forward_split</span>(best_fit_split<span class="sc">$</span>par, Xu_valid, Xv_valid, Y_valid, <span class="at">m =</span> <span class="dv">4</span>, <span class="at">nu =</span> best_nu)<span class="sc">$</span>ce</span>
+<span id="cb25-18"><a href="#cb25-18" aria-hidden="true" tabindex="-1"></a>  std_valid_ce   <span class="ot">&lt;-</span> <span class="fu">forward_standard</span>(fit_standard_bestnu<span class="sc">$</span>par, X_valid, Y_valid, <span class="at">m1 =</span> <span class="dv">8</span>, <span class="at">m2 =</span> <span class="dv">2</span>, <span class="at">nu =</span> best_nu)<span class="sc">$</span>ce</span>
+<span id="cb25-19"><a href="#cb25-19" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb25-20"><a href="#cb25-20" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Determine Validation Misclassification for Each Model:</span></span>
+<span id="cb25-21"><a href="#cb25-21" aria-hidden="true" tabindex="-1"></a>  split_valid_err <span class="ot">&lt;-</span> <span class="fu">misclass_rate</span>(</span>
+<span id="cb25-22"><a href="#cb25-22" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict_split_class</span>(best_fit_split<span class="sc">$</span>par, Xu_valid, Xv_valid, <span class="at">m =</span> <span class="dv">4</span>), Y_valid)</span>
 <span id="cb25-23"><a href="#cb25-23" aria-hidden="true" tabindex="-1"></a>  </span>
 <span id="cb25-24"><a href="#cb25-24" aria-hidden="true" tabindex="-1"></a>  std_valid_err <span class="ot">&lt;-</span> <span class="fu">misclass_rate</span>(</span>
-<span id="cb25-25"><a href="#cb25-25" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict_standard_class</span>(fit_standard_bestnu<span class="sc">$</span>par, X_valid, <span class="at">m1 =</span> <span class="dv">8</span>, <span class="at">m2 =</span> <span class="dv">2</span>),</span>
-<span id="cb25-26"><a href="#cb25-26" aria-hidden="true" tabindex="-1"></a>    Y_valid</span>
-<span id="cb25-27"><a href="#cb25-27" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb25-28"><a href="#cb25-28" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb25-29"><a href="#cb25-29" aria-hidden="true" tabindex="-1"></a>  <span class="fu">save</span>(fit_standard_bestnu, split_valid_ce, std_valid_ce, split_valid_err, std_valid_err, <span class="at">file =</span> <span class="st">"NetworkComparisonObjects.RData"</span>)</span>
-<span id="cb25-30"><a href="#cb25-30" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb25-31"><a href="#cb25-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-25"><a href="#cb25-25" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict_standard_class</span>(fit_standard_bestnu<span class="sc">$</span>par, X_valid, <span class="at">m1 =</span> <span class="dv">8</span>, <span class="at">m2 =</span> <span class="dv">2</span>), Y_valid)</span>
+<span id="cb25-26"><a href="#cb25-26" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb25-27"><a href="#cb25-27" aria-hidden="true" tabindex="-1"></a>  <span class="co">#Save Results:</span></span>
+<span id="cb25-28"><a href="#cb25-28" aria-hidden="true" tabindex="-1"></a>  <span class="fu">save</span>(fit_standard_bestnu, split_valid_ce, std_valid_ce, split_valid_err, std_valid_err, <span class="at">file =</span> <span class="st">"NetworkComparisonObjects.RData"</span>)</span>
+<span id="cb25-29"><a href="#cb25-29" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb25-30"><a href="#cb25-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-31"><a href="#cb25-31" aria-hidden="true" tabindex="-1"></a><span class="co"># Create Performance Comparison Results Table:</span></span>
 <span id="cb25-32"><a href="#cb25-32" aria-hidden="true" tabindex="-1"></a>comparison_tbl <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
 <span id="cb25-33"><a href="#cb25-33" aria-hidden="true" tabindex="-1"></a>  <span class="at">Model =</span> <span class="fu">c</span>(<span class="st">"Split-Brain"</span>, <span class="st">"Standard Dense"</span>),</span>
 <span id="cb25-34"><a href="#cb25-34" aria-hidden="true" tabindex="-1"></a>  <span class="at">Validation_CE =</span> <span class="fu">c</span>(split_valid_ce, std_valid_ce),</span>
-<span id="cb25-35"><a href="#cb25-35" aria-hidden="true" tabindex="-1"></a>  <span class="at">Validation_Misclassification =</span> <span class="fu">c</span>(split_valid_err, std_valid_err)</span>
-<span id="cb25-36"><a href="#cb25-36" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb25-37"><a href="#cb25-37" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-38"><a href="#cb25-38" aria-hidden="true" tabindex="-1"></a>comparison_tbl</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb25-35"><a href="#cb25-35" aria-hidden="true" tabindex="-1"></a>  <span class="at">Validation_Misclassification =</span> <span class="fu">c</span>(split_valid_err, std_valid_err))</span>
+<span id="cb25-36"><a href="#cb25-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-37"><a href="#cb25-37" aria-hidden="true" tabindex="-1"></a><span class="co"># Convert Table to Latex:</span></span>
+<span id="cb25-38"><a href="#cb25-38" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
+<span id="cb25-39"><a href="#cb25-39" aria-hidden="true" tabindex="-1"></a>        comparison_tbl,</span>
+<span id="cb25-40"><a href="#cb25-40" aria-hidden="true" tabindex="-1"></a>        <span class="at">format =</span> <span class="st">"latex"</span>,</span>
+<span id="cb25-41"><a href="#cb25-41" aria-hidden="true" tabindex="-1"></a>        <span class="at">booktabs =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb25-42"><a href="#cb25-42" aria-hidden="true" tabindex="-1"></a>        <span class="at">caption =</span> <span class="st">"Comparison of split-brain vs. standard dense NN performance."</span>,</span>
+<span id="cb25-43"><a href="#cb25-43" aria-hidden="true" tabindex="-1"></a>        <span class="at">col.names =</span> <span class="fu">c</span>(<span class="st">"Model"</span>, <span class="st">"Validation_CE"</span>, <span class="st">"Validation_Misclassification"</span>),</span>
+<span id="cb25-44"><a href="#cb25-44" aria-hidden="true" tabindex="-1"></a>        <span class="at">align =</span> <span class="fu">c</span>(<span class="st">"l"</span>, <span class="st">"c"</span>, <span class="st">"c"</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>           Model Validation_CE Validation_Misclassification
-1    Split-Brain     0.1632742                   0.06944444
-2 Standard Dense     0.1509610                   0.08333333</code></pre>
+<pre><code>\begin{table}
+
+\caption{\label{tab:CompareModels}Comparison of split-brain vs. standard dense NN performance.}
+\centering
+\begin{tabular}[t]{lcc}
+\toprule
+Model &amp; Validation\_CE &amp; Validation\_Misclassification\\
+\midrule
+Split-Brain &amp; 0.1067067 &amp; 0.0555556\\
+Standard Dense &amp; 0.3344381 &amp; 0.1250000\\
+\bottomrule
+\end{tabular}
+\end{table}</code></pre>
 </div>
 </div>
-<p>To assess whether the split-brain network has an empirical advantage, compare its validation performance against that of a comparable standard dense network. The comparison should be based primarily on validation cross-entropy, with misclassification rate used as a secondary measure. If the split-brain network achieves lower validation error, this would suggest that the imposed architectural separation between demographic/performance variables and nutritional variables is helpful for this problem. If performance is similar, then the split-brain structure may not yield a material predictive gain, although it may still offer interpretability benefits. If the dense network performs better, then the restrictions imposed by the split-brain design may be too strong for the present dataset.</p>
+<p>To test whether the split-brain network provides an empirical advantage, a standard neural network was fit on using the same training and validation data at the same value of ˆν. The split-brain network has a far lower validation cross-entropy of 0.107 vs 0.334 for the standard neural network. The split-brain network also has a lower misclassification error of 0.056 vs 0.125 for the standard network. This provides clear empirical evidence that the split-brain network improves the predictive performance of this problem.</p>
 </section>
 </section>
 

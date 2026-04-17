@@ -31,7 +31,6 @@ dat$Sex_plot <- factor(dat$Sex, levels = c(0, 1), labels = c("Female", "Male"))
 ### Exploratory Data Analysis:
 
 ```{r label = EDAPlots, echo = TRUE}
-
 # Average First-Half Speed vs. Bombed:
 p1 <- ggplot(dat, aes(x = AveSpeed, y = as.numeric(Bombed))) +
   geom_jitter(height = 0.05, width = 0, alpha = 0.5) +
@@ -105,15 +104,13 @@ p4
 
 ```
 
-The exploratory analysis suggests that the relationship between the predictors and the probability of bombing is not purely linear. In particular, the response appears to vary nonlinearly across both Fluid and Carbs, and there may also be interaction-type behaviour between nutritional variables and demographic/performance variables. This provides preliminary motivation for considering a nonlinear classifier such as a neural network. After running the plots, comment specifically on whether the smoothed trends appear curved, whether there are threshold-like regions, and whether separation appears stronger in some predictor combinations than in others.
-
 ## b)
 
 ## c)
 
 ```{r label = SoftmaxFunction, echo = TRUE}
 # Definition of Softmax Activation Function for Input Matrix Z:
-softmax_mat <- function(Z) {
+softmax <- function(Z) {
   # Calculation of Shifted Matrix by Max Column-Wise Value for Numerical Stability:
   Z_shift <- sweep(Z, 2, apply(Z, 2, max), FUN = "-")
   # Element-Wise Exponentiation of Shifted Matrix:
@@ -157,11 +154,6 @@ Y <- rbind(
 ### Feed Forward & Objective Function
 
 ```{r label = SplitBrainNetworkFunctions, echo = TRUE}
-# Definition of the Derivative of tanh in Terms of the Activation:
-tanh_prime_from_act <- function(A) {
-  1 - A^2
-}
-
 # Function to Unpack Parameter Vector into Split-Brain Network Weights and Biases:
 unpack_split_params <- function(theta, pu, pv, m, q) {
 
@@ -246,7 +238,7 @@ forward_split <- function(theta, Xu, Xv, Y = NULL, m = 4, nu = 0) {
   
   # Computation of Output-Layer Linear Combinations and Softmax Probabilities:
   Z3 <- pars$W3 %*% A2 + pars$b3 %*% oneN
-  P  <- softmax_mat(Z3)
+  P  <- softmax(Z3)
   
   # Storage of Feed Forward Outputs in a List:
   out <- list(
@@ -295,7 +287,7 @@ misclass_rate <- function(pred_class, Y) {
 }
 ```
 
-Fitting Wrapper (OPTIONAL):
+Fitting Wrapper:
 
 ```{r label = FitSplitWrapper, echo = TRUE}
 
@@ -330,7 +322,7 @@ fit_split_network <- function(Xu_train, Xv_train, Y_train, m = 4, nu = 0,
 }
 ```
 
-The forward pass was implemented explicitly for the split-brain architecture described in the assignment. Hyperbolic tangent activation functions were used on all hidden nodes, while the output layer used a two-class softmax activation. Since the response is binary and the network outputs class probabilities, the natural objective function is the multinomial cross-entropy loss. To control model complexity, an L2 penalty was added on the weight matrices, with regularisation level denoted by v. Bias terms were left unpenalised.
+Since the response is binary and the network outputs class probabilities, the chosen objective function is the multinomial cross-entropy loss. To control model complexity, an L2 penalty was added on the weight matrices, with regularisation level denoted by v. Bias terms were left unpenalised.
 
 ## h)
 
@@ -373,66 +365,65 @@ if (file.exists("ValidationLoopResults.Rdata"))
   load("ValidationLoopResults.Rdata")
 } else 
 {
-  #Create a data frame to store the different results for each nu:
+  #cCreate a Data Frame to store the different results for each nu:
   val_results <- data.frame(
     nu = nu_grid,
     train_loss = NA_real_, #Training loss (penalised objective). 
     train_ce = NA_real_, #Training cross-entropy. 
     valid_ce = NA_real_, #Validation cross-entropy. 
     train_err = NA_real_, #Training misclassification error. 
-    valid_err = NA_real_ #Validation misclassification error. 
-  )
+    valid_err = NA_real_ #Validation misclassification error.
+    )
   
-  #Store fitted models for each nu:
+  # Store Fitted Models for Each Nu:
   split_fits <- vector("list", length(nu_grid))
   
-  #Loop over our nu grid:
+  # Loop Over Our Nu Grid:
   for (i in seq_along(nu_grid)) {
     
-    #Fit the split-brain network to the current nu value:
+    # Fit the Split-Brain Network Using the Current Nu Value:
     fit_i <- fit_split_network(
       Xu_train, Xv_train, Y_train,
       m = 4, nu = nu_grid[i],
-      maxit = 800, n_starts = 8, seed = 2026 + i
-    )
+      maxit = 800, n_starts = 8, seed = 2026 + i)
     
-    #Store the model:
+    # Store the model:
     split_fits[[i]] <- fit_i
     
-    #Evaluate the model performance on the training and validation sets:
+    # Evaluate the Model Performance on the Training and Validation Sets:
     tr_eval <- forward_split(fit_i$par, Xu_train, Xv_train, Y_train, m = 4, nu = nu_grid[i])
     va_eval <- forward_split(fit_i$par, Xu_valid, Xv_valid, Y_valid, m = 4, nu = nu_grid[i])
     
-    #Make predicted class labels for training and validation sets:
+    # Make Predicted Class Labels for Training and Validation Sets:
     tr_pred <- predict_split_class(fit_i$par, Xu_train, Xv_train, m = 4)
     va_pred <- predict_split_class(fit_i$par, Xu_valid, Xv_valid, m = 4)
     
-    #Store the results:
+    # Store the Results:
     val_results$train_loss[i] <- tr_eval$loss  #Training loss (penalised objective). 
     val_results$train_ce[i]   <- tr_eval$ce  #Training cross-entropy.  
     val_results$valid_ce[i]   <- va_eval$ce  #Validation cross-entropy.
     val_results$train_err[i]  <- misclass_rate(tr_pred, Y_train)  #Training misclassification error. 
     val_results$valid_err[i]  <- misclass_rate(va_pred, Y_valid)  #Validation misclassification error. 
   }
-  #Save the results for future use:
+  # Save the Results for Future Use:
   save(val_results, split_fits, file = "ValidationLoopResults.Rdata")
 }
 
-#Display the results
+# Display the Results:
 val_results
 ```
 
 Select Best Regularisation Level
 
 ```{r label = ChooseBestNu, echo = TRUE}
-#Indentifying the index of the best nu value (the one that minimises the validation cross-entropy):
+# Indentifying the index of the best nu value (the one that minimises the validation cross-entropy):
 best_idx <- which.min(val_results$valid_ce)
-#Extracting this corresponding optimal nu value:
+# Extracting this corresponding optimal nu value:
 best_nu  <- val_results$nu[best_idx]
-#Extracting this corresponding fitted model:
+# Extracting this corresponding fitted model:
 best_fit_split <- split_fits[[best_idx]]
 
-#Displaying this nu value and its corresponding performance metrics:
+# Displaying this nu value and its corresponding performance metrics:
 best_nu
 val_results[best_idx, ]
 ```
@@ -443,7 +434,7 @@ Validation Plot
 #| fig-width: 6
 #| fig-height: 6
 
-#Plotting validation cross-entropy against the regularisation parameter nu: 
+# Plotting validation cross-entropy against the regularisation parameter nu: 
 ggplot(val_results, aes(x = nu, y = valid_ce)) +
   geom_line() +
   geom_point(data = val_results[best_idx, ], size = 4, colour = "red") +
@@ -451,8 +442,7 @@ ggplot(val_results, aes(x = nu, y = valid_ce)) +
   scale_x_log10() +
   labs(
     x = expression(nu),
-    y = "Validation cross-entropy"
-  )
+    y = "Validation cross-entropy")
 ```
 
 Figure 5 plots the validation cross-entropy against the regularisation parameter $\nu$. The curve initially decreases and reaches a minimum after which it increases sharply and eventually plateaus at higher values of $\nu$. The minimum value validation cross-entropy value occurs at $\hat{\nu} = 0.001186388$, and this is therefore selected as the optimal level of regularisation. This point is highlighted on the plot.
@@ -467,48 +457,45 @@ Build Prediction Grid
 
 ```{r label = ResponseGrid, echo = TRUE}
 
-#Create sequences over our range of Fluid and Carbs values:
+# Create sequences over our range of Fluid and Carbs values:
 fluid_seq <- seq(min(dat$Fluid), max(dat$Fluid), length.out = 100)
 carb_seq  <- seq(min(dat$Carbs), max(dat$Carbs), length.out = 100)
 
-#Create a grid of all combinations of Fluid, Carbs and Sex:
+# Create a grid of all combinations of Fluid, Carbs and Sex:
 grid_pred <- expand.grid(
   Fluid = fluid_seq,
   Carbs = carb_seq,
-  Sex = c("Female", "Male")
-)
+  Sex = c("Female", "Male"))
 
-#Fix the AveSpeed for each combination as 12km/h:
+# Fix the AveSpeed for each combination as 12km/h:
 grid_pred$AveSpeed <- 12
 
-#Convert Sex into a numeric variable:
+# Convert Sex into a numeric variable:
 grid_pred$SexNum <- ifelse(grid_pred$Sex == "Male", 1, 0)
 
-#Create input matrices as needed by our split-brain network:
+# Create input matrices as needed by our split-brain network:
 Xu_grid <- t(as.matrix(grid_pred[, c("AveSpeed", "SexNum")]))
 Xv_grid <- t(as.matrix(grid_pred[, c("Fluid", "Carbs")]))
 
-#Evaluate the fitted model for each input in the grid:
+# Evaluate the fitted model for each input in the grid:
 P_grid <- forward_split(best_fit_split$par, Xu_grid, Xv_grid, m = 4)$P
 
-#Get the predicted probabilities of bombing for each input in the grid:
+# Get the Predicted Probabilities of Bombing for Each Input in the Grid:
 grid_pred$ProbBombed <- as.numeric(P_grid[2, ])
 ```
 
 Surface-Style Heatmaps
 
 ```{r label = ResponseHeatmaps, echo = TRUE}
-#| echo: TRUE
 #| fig-width: 8
 #| fig-height: 4
 
-#Plotting the response surface for a runner targeting 12km/h, showing the predicted probability of bombing over Fluid and Carbs, with separate plots for each Sex:
+# Plotting the response surface for a runner targeting 12km/h, showing the predicted probability of bombing over Fluid and Carbs, with separate plots for each Sex:
 ggplot(grid_pred, aes(x = Fluid, y = Carbs, fill = ProbBombed)) +
   geom_tile() +
   facet_wrap(~ Sex) +
   labs(
-    fill = "Pr(Bombed)"
-  )
+    fill = "Pr(Bombed)")
 ```
 
 ## j)
@@ -528,11 +515,10 @@ When comparing the two panels, the shape of the response surfaces is the same fo
 Fit a Comparable Standard Dense Network
 
 ```{r label = StandardNetworkFunctions, echo = TRUE}
-
-#Combine the split matrices into one input matrix
+# Combine the Split Matrices into One Input Matrix:
 X_full <- rbind(Xu, Xv)
 
-#Function to Unpack Parameter Vector into standard Network Weights and Biases:
+# Function to Unpack Parameter Vector into Standard Network Weights and Biases:
 unpack_standard_params <- function(theta, p, m1, m2, q) {
   idx <- 1
   
@@ -543,74 +529,72 @@ unpack_standard_params <- function(theta, p, m1, m2, q) {
     out
   }
   
-  #First hidden layer parameters
+  # First Hidden Layer Parameters:
   W1 <- matrix(take(m1 * p), nrow = m1, ncol = p)
   b1 <- matrix(take(m1), nrow = m1, ncol = 1)
   
-  #second hidden layer parameters
+  # Second Hidden Layer Parameters:
   W2 <- matrix(take(m2 * m1), nrow = m2, ncol = m1)
   b2 <- matrix(take(m2), nrow = m2, ncol = 1)
   
-  #third hidden layer parameters
+  # Third Hidden Layer Parameters:
   W3 <- matrix(take(q * m2), nrow = q, ncol = m2)
   b3 <- matrix(take(q), nrow = q, ncol = 1)
   
   list(W1 = W1, b1 = b1, W2 = W2, b2 = b2, W3 = W3, b3 = b3)
 }
 
-#Function to determine the number of parameters
+#Function to Determine the Number of Parameters
 n_params_standard <- function(p, m1, m2, q) {
   m1*p + m1 + m2*m1 + m2 + q*m2 + q
 }
 
-#Initialising the parameters randomly
+# Initialising the Parameters Randomly:
 init_standard_params <- function(p, m1, m2, q, sd = 0.1) {
   rnorm(n_params_standard(p, m1, m2, q), mean = 0, sd = sd)
 }
 
-#Forward pass through the neural network
+# Forward Pass Through the NN:
 forward_standard <- function(theta, X, Y = NULL, m1 = 8, m2 = 2, nu = 0) {
   p <- nrow(X)
   q <- 2
   N <- ncol(X)
   
-  #Unpacking Parameter Vector into Structured Weight and Bias Matrices:
+  # Unpacking Parameter Vector into Structured Weight and Bias Matrices:
   pars <- unpack_standard_params(theta, p, m1, m2, q)
-  #Creation of Row Vector of Ones to "Broadcast" Bias Terms Across Observations:
+  # Creation of Row Vector of Ones to "Broadcast" Bias Terms Across Observations:
   oneN <- matrix(1, nrow = 1, ncol = N)
   
-  #First hidden layer
+  # First Hidden Layer:
   Z1 <- pars$W1 %*% X + pars$b1 %*% oneN
   A1 <- tanh(Z1)
   
-  #second hidden layer
+  # Second Hidden Layer:
   Z2 <- pars$W2 %*% A1 + pars$b2 %*% oneN
   A2 <- tanh(Z2)
   
-  #Third hidden layer
+  # Third Hidden Layer:
   Z3 <- pars$W3 %*% A2 + pars$b3 %*% oneN
-  P <- softmax_mat(Z3)
+  P <- softmax(Z3)
   
   out <- list(P = P)
   
-  #Check for Response Matrix so that Objective Function can be Evaluated:
+  # Check for Response Matrix so that Objective Function can be Evaluated:
   if (!is.null(Y)) {
-    #Definition of Small Constant to Avoid log(0):
+    # Definition of Small Constant to Avoid log(0):
     eps <- 1e-12
-    #Computation of Cross-Entropy Component of the Objective Function
+    # Computation of Cross-Entropy Component of the Objective Function
     ce <- -mean(colSums(Y * log(P + eps)))
-    #Computation of L2 Regularisation Penalty on Weight Matrices Component:
+    # Computation of L2 Regularisation Penalty on Weight Matrices Component:
     reg <- (nu / 2) * (sum(pars$W1^2) + sum(pars$W2^2) + sum(pars$W3^2))
-    #Storage of Total Objective Function & Spearate Compenents:
+    # Storage of Total Objective Function & Spearate Compenents:
     out$loss <- ce + reg
     out$ce <- ce
     out$reg <- reg
   }
-  
-  out
 }
 
-#Function to fit the standard nnetwork using optimisation
+# Function to Fit the Standard NN Using Optim Function:
 fit_standard_network <- function(X_train, Y_train, m1 = 8, m2 = 2, nu = 0,
                                  maxit = 1000, n_starts = 8, seed = 2026) {
   set.seed(seed)
@@ -621,7 +605,7 @@ fit_standard_network <- function(X_train, Y_train, m1 = 8, m2 = 2, nu = 0,
   best_fit <- NULL
   best_val <- Inf
   
-  #Multiple starts to avoid poor local minimums
+  # Multiple Starts to Avoid Poor Local Minimums:
   for (s in 1:n_starts) {
     theta0 <- init_standard_params(p, m1, m2, q, sd = 0.1)
     
@@ -629,20 +613,17 @@ fit_standard_network <- function(X_train, Y_train, m1 = 8, m2 = 2, nu = 0,
       par = theta0,
       fn = function(th) forward_standard(th, X_train, Y_train, m1 = m1, m2 = m2, nu = nu)$loss,
       method = "BFGS",
-      control = list(maxit = maxit, reltol = 1e-8)
-    )
+      control = list(maxit = maxit, reltol = 1e-8))
     
-    #Store the best solution
+    # Store the Best Solution:
     if (fit$value < best_val) {
       best_val <- fit$value
       best_fit <- fit
     }
   }
-  
-  best_fit
 }
 
-#Generate predicted class labels from the standard nnetwork
+# Generate Predicted Class Labels from the Standard NN:
 predict_standard_class <- function(theta, X, m1 = 8, m2 = 2) {
   P <- forward_standard(theta, X, m1 = m1, m2 = m2)$P
   max.col(t(P)) - 1
@@ -651,9 +632,8 @@ predict_standard_class <- function(theta, X, m1 = 8, m2 = 2) {
 
 Compare Split-Brain and Standard Networks
 
-
 ```{r label = CompareModels, echo = TRUE}
-#Subset data into training and validation sets.
+# Subset Data into Training and Validation Sets:
 X_train <- X_full[, train_id, drop = FALSE]
 X_valid <- X_full[, valid_id, drop = FALSE]
 
@@ -662,38 +642,41 @@ if (file.exists("NetworkComparisonObjects.RData"))
   load("NetworkComparisonObjects.RData")
 } else 
 {
-  #use same best_nu for a fair first comparison and fit a standard nnet
+  # Use Same best_nu for a Fair First Comparison and Fit a Standard NN:
   fit_standard_bestnu <- fit_standard_network(
     X_train, Y_train,
     m1 = 8, m2 = 2, nu = best_nu,
-    maxit = 800, n_starts = 3, seed = 999
-  )
+    maxit = 800, n_starts = 3, seed = 999)
   
-  #Determine validation cross entropy for each model
+  # Determine Validation Cross Entropy for Each Model:
   split_valid_ce <- forward_split(best_fit_split$par, Xu_valid, Xv_valid, Y_valid, m = 4, nu = best_nu)$ce
   std_valid_ce   <- forward_standard(fit_standard_bestnu$par, X_valid, Y_valid, m1 = 8, m2 = 2, nu = best_nu)$ce
   
-  #Determine validation misclassification for each model
+  # Determine Validation Misclassification for Each Model:
   split_valid_err <- misclass_rate(
-    predict_split_class(best_fit_split$par, Xu_valid, Xv_valid, m = 4),
-    Y_valid
-  )
+    predict_split_class(best_fit_split$par, Xu_valid, Xv_valid, m = 4), Y_valid)
   
   std_valid_err <- misclass_rate(
-    predict_standard_class(fit_standard_bestnu$par, X_valid, m1 = 8, m2 = 2),
-    Y_valid
-  )
-  #Save results
+    predict_standard_class(fit_standard_bestnu$par, X_valid, m1 = 8, m2 = 2), Y_valid)
+  
+  #Save Results:
   save(fit_standard_bestnu, split_valid_ce, std_valid_ce, split_valid_err, std_valid_err, file = "NetworkComparisonObjects.RData")
 }
-#Display results in a table
+
+# Create Performance Comparison Results Table:
 comparison_tbl <- data.frame(
   Model = c("Split-Brain", "Standard Dense"),
   Validation_CE = c(split_valid_ce, std_valid_ce),
-  Validation_Misclassification = c(split_valid_err, std_valid_err)
-)
-#Display the table
-comparison_tbl
+  Validation_Misclassification = c(split_valid_err, std_valid_err))
+
+# Convert Table to Latex:
+cat(knitr::kable(
+        comparison_tbl,
+        format = "latex",
+        booktabs = TRUE,
+        caption = "Comparison of split-brain vs. standard dense NN performance.",
+        col.names = c("Model", "Validation_CE", "Validation_Misclassification"),
+        align = c("l", "c", "c")))
 ```
 
 To test whether the split-brain network provides an empirical advantage, a standard neural network was fit on using the same training and validation data at the same value of ˆν. The split-brain network has a far lower validation cross-entropy of 0.107 vs 0.334 for the standard neural network. The split-brain network also has a lower misclassification error of 0.056 vs 0.125 for the standard network. This provides clear empirical evidence that the split-brain network improves the predictive performance of this problem.
