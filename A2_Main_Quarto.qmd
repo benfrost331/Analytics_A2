@@ -491,11 +491,11 @@ ggplot(grid_pred, aes(x = Fluid, y = Carbs, fill = ProbBombed)) +
   facet_wrap(~ Sex) +
   labs(fill = "Pr(Bombed)") +
   theme(
-    axis.title.x = element_text(size = 18),
-    axis.title.y = element_text(size = 18),
-    axis.text.x  = element_text(size = 14),
-    axis.text.y  = element_text(size = 14),
-    strip.text = element_text(size = 14))
+    axis.title.x = element_text(size = 22),
+    axis.title.y = element_text(size = 22),
+    axis.text.x  = element_text(size = 17),
+    axis.text.y  = element_text(size = 17),
+    strip.text = element_text(size = 17))
 ```
 
 ## j)
